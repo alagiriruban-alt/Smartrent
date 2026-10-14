@@ -28,8 +28,9 @@ export default async function HomePage() {
         </h1>
         <p className="mt-4 max-w-xl text-lg leading-8 text-muted">
           SmartRentBoss keeps each property, the units inside it, and the
-          lease on that unit in one place. It is for a landlord who still
-          knows every tenant by name.
+          lease on that unit in one place. Record the rent when it arrives,
+          see who is late, and print a receipt. It is for a landlord who
+          still knows every tenant by name.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link href="/signup" className={primaryButton}>

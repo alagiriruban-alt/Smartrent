@@ -1,8 +1,6 @@
 // SmartRentBoss data model.
-// The app currently reads and writes users, properties, units, tenants,
-// and tenancies. The other models are here so later modules (a rent
-// ledger, CRA T776 expenses, documents, and N4 notices) have a place to
-// land without a redesign. Those screens are not built yet.
+// Landlords, properties, units, tenants, and the rent ledger are in use.
+// Expenses, documents, and N4 notices are reserved for later modules.
 
 generator client {
   provider = "prisma-client-js"
@@ -21,12 +19,14 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  properties Property[]
-  tenants    Tenant[]
-  expenses   Expense[]
-  documents  Document[]
-  notices    Notice[]
-  payments   RentPayment[]
+  properties           Property[]
+  tenants              Tenant[]
+  expenses             Expense[]
+  documents            Document[]
+  notices              Notice[]
+  payments             RentPayment[]
+  reminderRules        ReminderRule[]
+  remindersConfigured  Boolean         @default(false)
 }
 
 model Property {
@@ -94,6 +94,7 @@ model Tenancy {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
+  charges   RentCharge[]
   payments  RentPayment[]
   notices   Notice[]
   documents Document[]
@@ -107,23 +108,69 @@ enum TenancyStatus {
   ENDED
 }
 
-// Rent collected against a lease. Not shown in the app yet.
-model RentPayment {
-  id          String        @id @default(cuid())
-  ownerId     String
-  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+// One expected rent charge for a lease month. The amount and due date are
+// copied from the lease when the month is opened, so a later rent change
+// does not rewrite months that are already on the ledger.
+model RentCharge {
+  id          String   @id @default(cuid())
   tenancyId   String
-  tenancy     Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancy     Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  periodStart DateTime @db.Date
+  dueOn       DateTime @db.Date
   amountCents Int
-  paidOn      DateTime      @db.Date
-  periodStart DateTime      @db.Date
-  periodEnd   DateTime      @db.Date
-  method      PaymentMethod
-  note        String?
-  createdAt   DateTime      @default(now())
+  createdAt   DateTime @default(now())
+
+  allocations PaymentAllocation[]
+
+  @@unique([tenancyId, periodStart])
+  @@index([tenancyId])
+}
+
+// Money the landlord recorded against a lease. A payment can cover more
+// than one month; PaymentAllocation is how it is split.
+model RentPayment {
+  id              String        @id @default(cuid())
+  ownerId         String
+  owner           User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenancyId       String
+  tenancy         Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  amountCents     Int
+  paidOn          DateTime      @db.Date
+  method          PaymentMethod
+  referenceNumber String?
+  note            String?
+  createdAt       DateTime      @default(now())
+
+  allocations PaymentAllocation[]
 
   @@index([ownerId])
   @@index([tenancyId])
+}
+
+model PaymentAllocation {
+  id          String      @id @default(cuid())
+  paymentId   String
+  payment     RentPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  chargeId    String
+  charge      RentCharge  @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  amountCents Int
+
+  @@index([paymentId])
+  @@index([chargeId])
+}
+
+// offsetDays is relative to the due date: -3 is three days before,
+// 0 is the due date, and 3 is three days late.
+model ReminderRule {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  offsetDays Int
+  enabled    Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@unique([ownerId, offsetDays])
+  @@index([ownerId])
 }
 
 enum PaymentMethod {
@@ -210,7 +257,7 @@ enum DocumentKind {
 }
 
 // Ontario Landlord and Tenant Board notices. N4 is the non-payment
-// notice. Not shown in the app yet.
+// notice. The screen is not built yet; arrears for it come from the ledger.
 model Notice {
   id               String       @id @default(cuid())
   ownerId          String

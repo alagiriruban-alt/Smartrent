@@ -26,6 +26,31 @@ export function utcToDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+export function monthStart(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}
+
+export function addMonths(monthStartIso: string, count: number): string {
+  const year = Number(monthStartIso.slice(0, 4));
+  const month = Number(monthStartIso.slice(5, 7));
+  const date = new Date(Date.UTC(year, month - 1 + count, 1));
+  const nextYear = date.getUTCFullYear();
+  const nextMonth = date.getUTCMonth() + 1;
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+}
+
+export function lastDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+export function daysBetween(startIso: string, endIso: string): number {
+  const [startYear, startMonth, startDay] = startIso.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endIso.split("-").map(Number);
+  const start = Date.UTC(startYear, startMonth - 1, startDay);
+  const end = Date.UTC(endYear, endMonth - 1, endDay);
+  return Math.round((end - start) / 86_400_000);
+}
+
 export function todayDateOnly(
   now = new Date(),
   timeZone = APP_TIME_ZONE,

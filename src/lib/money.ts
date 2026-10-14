@@ -23,3 +23,8 @@ export function formatCad(cents: number): string {
     currency: "CAD",
   }).format(cents / 100);
 }
+
+/** Currency text for email and PDF, without non-breaking spaces. */
+export function formatCadPlain(cents: number): string {
+  return formatCad(cents).replace(/[\u00a0\u202f]/g, " ");
+}

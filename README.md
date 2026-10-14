@@ -1,6 +1,6 @@
 # SmartRentBoss
 
-SmartRentBoss is a small web app for landlords in Ontario who look after about 1 to 10 units. You can sign up, add a property, add the units in that property, and record who is renting each unit, for how much, and which day the rent is due.
+SmartRentBoss is a small web app for landlords in Ontario who look after about 1 to 10 units. You can sign up, add a property, add the units in that property, and record who is renting each unit. Each month the lease opens a rent charge. You record what was paid, see who is late, and print a receipt.
 
 Each login sees only its own buildings and tenants.
 
@@ -101,7 +101,12 @@ The sample landlord created by the seed command is:
 - Email: `landlord@example.com`
 - Password: `DemoRent1`
 
-You will see a duplex in Hamilton. The upper unit is rented. The lower unit is vacant. You can also create your own account from the home page. A new account starts with an empty rent roll and cannot see the sample landlord's data.
+You will see a duplex in Hamilton.
+
+- **Upper.** Jordan Patel, $1,850 due on the 1st, paid up through this month. January was a cheque. The other months were Interac e-Transfer.
+- **Lower.** Sam Okonkwo, $1,450 due on the 1st, behind on rent. Older months are paid, the second-most-recent past-due month is a partial cash payment, and the latest past-due month is unpaid.
+
+That sample is dated from the day you run the seed, so Sam is late whenever today is after at least one due date on the lower lease (the lease starts June 1, 2026). You can also create your own account from the home page. A new account starts with an empty rent roll and cannot see the sample landlord's data.
 
 ## What you can do
 
@@ -110,6 +115,12 @@ You will see a duplex in Hamilton. The upper unit is rented. The lower unit is v
 - Add, edit, and delete units on that property.
 - Add, edit, and remove a tenant on a unit, including the lease dates, monthly rent in Canadian dollars, the day rent is due, and optional email and phone.
 - Read a rent roll that shows, for each property, how many units are occupied and the monthly rent from leases that are active today (America/Toronto).
+- Open a monthly ledger for each tenant. A month is Due, Paid, Partial, or Late. Partial means some of that month has been paid. Late means nothing has been paid and the due date has passed.
+- Record a payment: date, amount, method, reference number, and notes. Interac e-Transfer is the default. Cash, cheque, pre-authorized debit, and other are there too. The money pays the oldest unpaid month first. A payment can be partial. Anything extra sits as credit until a later month opens.
+- Paste an Interac e-Transfer notification email. The form fills the amount, date, and reference and suggests the tenant. You confirm before it is saved.
+- See, on the rent roll, how much of this month's rent is collected and who is late, with the amount owed and how many days late.
+- Set a reminder schedule, such as 3 days before the due date, the due date, and 3 days late. The app lists who matches that schedule and shows an email you can copy. It does not send email.
+- Open a receipt for a payment, print it, or download a PDF.
 
 Passwords are stored as a hash. The app never keeps the original password.
 
@@ -122,7 +133,7 @@ npm test
 npm run lint
 ```
 
-`npm test` runs the automated checks for rent totals, dates, postal codes, and form rules. `npm run lint` looks for common coding mistakes.
+`npm test` runs the automated checks for rent totals, the ledger, the Interac paste, reminders, receipts, dates, postal codes, and form rules. `npm run lint` looks for common coding mistakes.
 
 ## If something goes wrong
 
@@ -152,19 +163,18 @@ When it asks for a password, enter `smartrent`. If you choose a different passwo
 ## Where things live
 
 ```text
-src/app          pages (home, sign in, rent roll, forms)
+src/app          pages (home, sign in, rent roll, ledger, receipts)
 src/actions      what the forms save
-src/lib          rules for money, dates, and who can see a record
+src/lib          rules for money, dates, rent, and who can see a record
 src/components   shared pieces of the pages
 prisma           the database shape, migrations, and sample data
 tests            automated checks
 ```
 
+The ledger keeps one charge per lease month. Payments are split across those months. Past-due unpaid amounts are shaped for a future N4 notice (`src/lib/arrears.ts`): the total owing and each month still unpaid. Reminder email goes through `src/lib/email.ts`, which does not send anything until a provider is plugged in.
+
 The database also has tables for later work that is not on screen yet:
 
-- rent payments (a ledger of what was paid)
 - expenses, using the categories on CRA form T776
-- documents such as leases and receipts
+- documents such as leases and stored files
 - N4 notices for unpaid rent
-
-Those screens are not part of this version.

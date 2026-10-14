@@ -95,12 +95,20 @@ export default async function UnitPage({
                   <p className="text-sm font-semibold uppercase tracking-[0.14em] text-gold">
                     {phaseLabel[phase]}
                   </p>
-                  <Link
-                    href={`/dashboard/tenancies/${tenancy.id}/edit`}
-                    className={secondaryButton}
-                  >
-                    Edit tenant
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/dashboard/tenancies/${tenancy.id}/rent`}
+                      className={secondaryButton}
+                    >
+                      Rent ledger
+                    </Link>
+                    <Link
+                      href={`/dashboard/tenancies/${tenancy.id}/edit`}
+                      className={secondaryButton}
+                    >
+                      Edit tenant
+                    </Link>
+                  </div>
                 </div>
                 <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                   <div>
