@@ -32,6 +32,7 @@ export async function createProperty(
     data: { ownerId: user.id, ...parsed.data },
   });
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   redirect(`/dashboard/properties/${property.id}`);
 }
 
@@ -54,6 +55,7 @@ export async function updateProperty(
     notFound();
   }
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${id}`);
   redirect(`/dashboard/properties/${id}`);
 }
@@ -90,5 +92,6 @@ export async function deleteProperty(
     });
   }
   revalidatePath("/dashboard");
-  redirect("/dashboard");
+  revalidatePath("/dashboard/properties");
+  redirect("/dashboard/properties");
 }

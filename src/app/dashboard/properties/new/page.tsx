@@ -8,8 +8,8 @@ export const metadata = { title: "Add property" };
 export default function NewPropertyPage() {
   return (
     <div>
-      <Link href="/dashboard" className="text-sm font-semibold text-pine">
-        Back to rent roll
+      <Link href="/dashboard/properties" className="text-sm font-semibold text-pine">
+        Back to properties
       </Link>
       <h1 className="mt-3 font-serif text-4xl tracking-tight">Add a property</h1>
       <p className="mt-2 text-muted">
