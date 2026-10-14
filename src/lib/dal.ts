@@ -12,6 +12,7 @@ import {
   summarizeUnits,
   type TenancySnapshot,
 } from "@/lib/portfolio";
+import { loadPortfolio } from "@/lib/services/portfolio";
 
 export const requireUser = cache(async () => {
   const session = await auth();
@@ -63,43 +64,8 @@ function toSnapshot(tenancy: {
 
 export async function getPortfolio() {
   const user = await requireUser();
-  const properties = await prisma.property.findMany({
-    where: ownedWhere(user.id),
-    orderBy: [{ name: "asc" }, { streetAddress: "asc" }],
-    include: {
-      units: {
-        orderBy: { label: "asc" },
-        include: {
-          tenancies: {
-            select: tenancySelect,
-            orderBy: { leaseStart: "desc" },
-          },
-        },
-      },
-    },
-  });
-
-  const rows = properties.map((property) => ({
-    property,
-    summary: summarizeUnits(
-      property.units.map((unit) => ({
-        tenancies: unit.tenancies.map(toSnapshot),
-      })),
-      todayDateOnly(),
-    ),
-  }));
-
-  const totals = rows.reduce(
-    (sum, row) => ({
-      properties: sum.properties + 1,
-      unitCount: sum.unitCount + row.summary.unitCount,
-      occupiedCount: sum.occupiedCount + row.summary.occupiedCount,
-      monthlyRentCents: sum.monthlyRentCents + row.summary.monthlyRentCents,
-    }),
-    { properties: 0, unitCount: 0, occupiedCount: 0, monthlyRentCents: 0 },
-  );
-
-  return { user, rows, totals };
+  const portfolio = await loadPortfolio(user.id);
+  return { user, rows: portfolio.rows, totals: portfolio.totals };
 }
 
 export async function getProperty(propertyId: string) {

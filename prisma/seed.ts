@@ -1,5 +1,6 @@
 import { PrismaClient, type PaymentMethod } from "@prisma/client";
 
+import { etransferReferenceKey } from "../src/lib/agent/reference";
 import { dateOnlyToUtc, todayDateOnly, utcToDateOnly } from "../src/lib/dates";
 import { arrearsSamplePlan } from "../src/lib/ledger";
 import { hashPassword } from "../src/lib/passwords";
@@ -188,6 +189,10 @@ async function seedPaidUp(
         paidOn: charge.dueOn,
         method: cheque ? "CHEQUE" : "E_TRANSFER",
         referenceNumber: cheque ? "1001" : `CAJP${period}`,
+        referenceKey: etransferReferenceKey(
+          cheque ? "CHEQUE" : "E_TRANSFER",
+          cheque ? "1001" : `CAJP${period}`,
+        ),
         note: "Rent",
         allocations: {
           create: {
@@ -249,6 +254,7 @@ async function seedBehind(
         paidOn: charge.dueOn,
         method,
         referenceNumber,
+        referenceKey: etransferReferenceKey(method, referenceNumber),
         note,
         allocations: {
           create: { chargeId: charge.id, amountCents: line.payCents },

@@ -26,7 +26,10 @@ model User {
   notices              Notice[]
   payments             RentPayment[]
   reminderRules        ReminderRule[]
-  remindersConfigured  Boolean         @default(false)
+  remindersConfigured  Boolean              @default(false)
+  agentTokens          AgentAccessToken[]
+  agentConfirmations   AgentConfirmation[]
+  agentAuditLogs       AgentAuditLog[]
 }
 
 model Property {
@@ -138,11 +141,16 @@ model RentPayment {
   paidOn          DateTime      @db.Date
   method          PaymentMethod
   referenceNumber String?
+  // Set only for an e-Transfer that has a reference. The unique key
+  // stops the same transfer from being posted twice. Other methods
+  // leave this empty, and Postgres allows more than one empty value.
+  referenceKey    String?
   note            String?
   createdAt       DateTime      @default(now())
 
   allocations PaymentAllocation[]
 
+  @@unique([ownerId, referenceKey])
   @@index([ownerId])
   @@index([tenancyId])
 }
@@ -179,6 +187,63 @@ enum PaymentMethod {
   CASH
   PRE_AUTHORIZED
   OTHER
+}
+
+enum AgentTokenScope {
+  READ
+  WRITE
+}
+
+// A personal access token for an assistant. Only the hash is stored.
+// The landlord sees the secret once, on the Agent access page.
+model AgentAccessToken {
+  id          String            @id @default(cuid())
+  ownerId     String
+  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  tokenHash   String            @unique
+  tokenPrefix String
+  scopes      AgentTokenScope[]
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime          @default(now())
+
+  auditLogs AgentAuditLog[]
+
+  @@index([ownerId])
+}
+
+// One-time proof that the landlord's agent previewed a money or
+// notice change and is allowed to commit that exact change.
+model AgentConfirmation {
+  id        String    @id @default(cuid())
+  ownerId   String
+  owner     User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  tool      String
+  payload   Json
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([ownerId])
+}
+
+// Every tool call made with an agent token. viaAgent is always true
+// so the activity page can show the "via agent" tag.
+model AgentAuditLog {
+  id        String            @id @default(cuid())
+  ownerId   String
+  owner     User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tokenId   String?
+  token     AgentAccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  tool      String
+  status    String
+  summary   String
+  viaAgent  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+
+  @@index([ownerId, createdAt])
 }
 
 // Operating expenses, grouped the way CRA form T776 lists them.

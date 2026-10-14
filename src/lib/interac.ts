@@ -268,20 +268,28 @@ function scoreName(senderName: string, candidate: TenantMatchCandidate): number 
   return 0;
 }
 
-export function suggestTenant(
+/** Matches at 70 or above, highest first. Ties are kept so a caller can refuse to guess. */
+export function rankTenants(
   senderName: string | null,
   candidates: TenantMatchCandidate[],
-): TenantMatch | null {
+): TenantMatch[] {
   if (!senderName) {
-    return null;
+    return [];
   }
-  const scored = candidates
+  return candidates
     .map((candidate) => ({
       tenancyId: candidate.tenancyId,
       score: scoreName(senderName, candidate),
     }))
     .filter((row) => row.score >= 70)
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score || a.tenancyId.localeCompare(b.tenancyId));
+}
+
+export function suggestTenant(
+  senderName: string | null,
+  candidates: TenantMatchCandidate[],
+): TenantMatch | null {
+  const scored = rankTenants(senderName, candidates);
   if (scored.length === 0) {
     return null;
   }

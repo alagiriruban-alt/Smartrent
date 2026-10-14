@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run",
+    "test": "prisma migrate deploy && vitest run",
+    "mcp:check": "node --env-file=.env --import tsx scripts/mcp-client-test.ts",
     "db:seed": "node --env-file=.env --import tsx prisma/seed.ts",
     "postinstall": "prisma generate"
   },

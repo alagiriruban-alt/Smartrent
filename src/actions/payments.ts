@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/dal";
-import { dateOnlyToUtc, todayDateOnly } from "@/lib/dates";
-import { prisma } from "@/lib/db";
-import { syncTenancyLedger } from "@/lib/rent-sync";
+import { todayDateOnly } from "@/lib/dates";
+import { ServiceError } from "@/lib/services/errors";
+import { recordRentPayment } from "@/lib/services/rent";
 import { formString, parsePayment, type FormState } from "@/lib/validators";
 
 export async function recordPayment(
@@ -30,45 +30,30 @@ export async function recordPayment(
     return { errors: parsed.errors };
   }
 
-  const tenancy = await prisma.tenancy.findFirst({
-    where: {
-      id: parsed.data.tenancyId,
-      unit: { property: { ownerId: user.id } },
-    },
-    select: {
-      id: true,
-      leaseStart: true,
-      leaseEnd: true,
-      monthlyRentCents: true,
-      rentDueDay: true,
-      unit: { select: { propertyId: true } },
-    },
-  });
-  if (!tenancy) {
-    notFound();
+  let result: Awaited<ReturnType<typeof recordRentPayment>>;
+  try {
+    result = await recordRentPayment(user.id, parsed.data, today);
+  } catch (error) {
+    if (error instanceof ServiceError && error.code === "not_found") {
+      notFound();
+    }
+    throw error;
   }
 
-  const payment = await prisma.$transaction(async (tx) => {
-    await syncTenancyLedger(tx, tenancy, today);
-    const created = await tx.rentPayment.create({
-      data: {
-        ownerId: user.id,
-        tenancyId: tenancy.id,
-        amountCents: parsed.data.amountCents,
-        paidOn: dateOnlyToUtc(parsed.data.paidOn),
-        method: parsed.data.method,
-        referenceNumber: parsed.data.referenceNumber,
-        note: parsed.data.note,
+  if (result.outcome === "already_recorded") {
+    return {
+      errors: {
+        referenceNumber: [
+          "That e-Transfer reference is already on the ledger.",
+        ],
       },
-    });
-    await syncTenancyLedger(tx, tenancy, today);
-    return created;
-  });
+    };
+  }
 
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/rent");
   revalidatePath("/dashboard/reminders");
-  revalidatePath(`/dashboard/tenancies/${tenancy.id}/rent`);
-  revalidatePath(`/dashboard/properties/${tenancy.unit.propertyId}`);
-  redirect(`/dashboard/payments/${payment.id}`);
+  revalidatePath(`/dashboard/tenancies/${result.payment.tenancyId}/rent`);
+  revalidatePath("/dashboard/properties");
+  redirect(`/dashboard/payments/${result.payment.id}`);
 }
