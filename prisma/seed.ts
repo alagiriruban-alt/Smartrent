@@ -1,7 +1,11 @@
 import { PrismaClient, type PaymentMethod } from "@prisma/client";
 
 import { etransferReferenceKey } from "../src/lib/agent/reference";
-import { dateOnlyToUtc, todayDateOnly, utcToDateOnly } from "../src/lib/dates";
+import { addCalendarMonths, addDays, dateOnlyToUtc, todayDateOnly, utcToDateOnly } from "../src/lib/dates";
+import {
+  ONTARIO_GUIDELINE_SOURCE_URL,
+  ONTARIO_OFFICIAL_GUIDELINES,
+} from "../src/lib/rent-increase/official";
 import { arrearsSamplePlan } from "../src/lib/ledger";
 import { hashPassword } from "../src/lib/passwords";
 import { syncTenancyLedger } from "../src/lib/rent-sync";
@@ -26,6 +30,8 @@ async function main() {
   await ensureProperty(user.id);
   await ensureReminderRules(user.id);
   await ensurePayments(user.id);
+  await ensureOntarioGuidelines();
+  await ensureRentIncreaseDemo(user.id);
 
   console.log("Sample landlord is ready.");
   console.log(`Email:    ${demoEmail}`);
@@ -77,6 +83,7 @@ async function ensureProperty(ownerId: string) {
                   tenantId: jordan.id,
                   leaseStart: dateOnlyToUtc("2026-01-01"),
                   leaseEnd: dateOnlyToUtc("2026-12-31"),
+                  moveInOn: dateOnlyToUtc("2026-01-01"),
                   monthlyRentCents: 185000,
                   rentDueDay: 1,
                 },
@@ -89,6 +96,7 @@ async function ensureProperty(ownerId: string) {
                 create: {
                   tenantId: sam.id,
                   leaseStart: dateOnlyToUtc("2026-06-01"),
+                  moveInOn: dateOnlyToUtc("2026-06-01"),
                   monthlyRentCents: 145000,
                   rentDueDay: 1,
                 },
@@ -117,10 +125,79 @@ async function ensureProperty(ownerId: string) {
         unitId: lower.id,
         tenantId: sam.id,
         leaseStart: dateOnlyToUtc("2026-06-01"),
+        moveInOn: dateOnlyToUtc("2026-06-01"),
         monthlyRentCents: 145000,
         rentDueDay: 1,
       },
     });
+  }
+}
+
+async function ensureOntarioGuidelines() {
+  for (const row of ONTARIO_OFFICIAL_GUIDELINES) {
+    await prisma.rentGuideline.upsert({
+      where: { province_year: { province: "ON", year: row.year } },
+      create: {
+        province: "ON",
+        year: row.year,
+        basisPoints: row.basisPoints,
+        sourceUrl: ONTARIO_GUIDELINE_SOURCE_URL,
+        verified: true,
+      },
+      update: {
+        basisPoints: row.basisPoints,
+        sourceUrl: ONTARIO_GUIDELINE_SOURCE_URL,
+        verified: true,
+      },
+    });
+  }
+}
+
+async function ensureRentIncreaseDemo(ownerId: string) {
+  const today = todayDateOnly();
+  const eligibleOn = addDays(today, 100);
+  const lastIncreaseOn = addCalendarMonths(eligibleOn, -12);
+  const tenancies = await prisma.tenancy.findMany({
+    where: { unit: { property: { ownerId, name: "King Street duplex" } } },
+    include: { tenant: true },
+  });
+
+  for (const tenancy of tenancies) {
+    const leaseStart = utcToDateOnly(tenancy.leaseStart);
+    if (tenancy.tenant.lastName === "Patel") {
+      const moveInOn = leaseStart <= lastIncreaseOn ? leaseStart : lastIncreaseOn;
+      await prisma.tenancy.update({
+        where: { id: tenancy.id },
+        data: {
+          moveInOn: dateOnlyToUtc(moveInOn),
+          lastIncreaseOn: dateOnlyToUtc(lastIncreaseOn),
+          lastIncreaseCents: 4500,
+          leaseEnd: dateOnlyToUtc(addCalendarMonths(eligibleOn, 12)),
+        },
+      });
+      await prisma.unit.update({
+        where: { id: tenancy.unitId },
+        data: { guidelineExempt: false, exemptionEvidence: null },
+      });
+    }
+    if (tenancy.tenant.lastName === "Okonkwo") {
+      await prisma.tenancy.update({
+        where: { id: tenancy.id },
+        data: {
+          moveInOn: dateOnlyToUtc(leaseStart),
+          lastIncreaseOn: null,
+          lastIncreaseCents: null,
+        },
+      });
+      await prisma.unit.update({
+        where: { id: tenancy.unitId },
+        data: {
+          guidelineExempt: true,
+          exemptionEvidence:
+            "Occupancy permit dated June 1, 2019. First residential occupancy was after November 15, 2018.",
+        },
+      });
+    }
   }
 }
 

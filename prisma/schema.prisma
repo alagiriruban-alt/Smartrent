@@ -1,6 +1,7 @@
 // SmartRentBoss data model.
-// Landlords, properties, units, tenants, and the rent ledger are in use.
-// Expenses, documents, and N4 notices are reserved for later modules.
+// Landlords, properties, units, tenants, the rent ledger, and Ontario
+// rent-increase drafts are in use.
+// Expenses, documents, and N4 notice screens are reserved for later modules.
 
 generator client {
   provider = "prisma-client-js"
@@ -64,6 +65,11 @@ model Unit {
   expenses  Expense[]
   documents Document[]
 
+  // True when the unit was first occupied for residential use after
+  // November 15, 2018. Those units are exempt from the guideline.
+  guidelineExempt   Boolean @default(false)
+  exemptionEvidence String?
+
   @@index([propertyId])
 }
 
@@ -91,9 +97,12 @@ model Tenancy {
   tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leaseStart       DateTime       @db.Date
   leaseEnd         DateTime?      @db.Date
-  monthlyRentCents Int
-  rentDueDay       Int
-  status           TenancyStatus  @default(ACTIVE)
+  monthlyRentCents  Int
+  rentDueDay        Int
+  moveInOn          DateTime       @db.Date
+  lastIncreaseOn    DateTime?      @db.Date
+  lastIncreaseCents Int?
+  status            TenancyStatus  @default(ACTIVE)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
@@ -321,8 +330,24 @@ enum DocumentKind {
   OTHER
 }
 
-// Ontario Landlord and Tenant Board notices. N4 is the non-payment
-// notice. The screen is not built yet; arrears for it come from the ledger.
+// Yearly rent increase guideline for a province. Ontario rows are
+// maintained in Settings. An N1 draft is blocked while the increase
+// year's row is missing or not verified.
+model RentGuideline {
+  id          String   @id @default(cuid())
+  province    String
+  year        Int
+  basisPoints Int
+  sourceUrl   String
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([province, year])
+}
+
+// Landlord and Tenant Board notices. N4 is the non-payment notice.
+// N1 and N2 are rent increase drafts. Nothing here is served.
 model Notice {
   id               String       @id @default(cuid())
   ownerId          String
@@ -336,6 +361,13 @@ model Notice {
   servedOn         DateTime?    @db.Date
   serviceMethod    String?
   notes            String?
+  effectiveOn          DateTime? @db.Date
+  currentRentCents     Int?
+  newRentCents         Int?
+  guidelineYear        Int?
+  guidelineBasisPoints Int?
+  guidelineSourceUrl   String?
+  warningCodes         String[]  @default([])
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -347,6 +379,8 @@ model Notice {
 
 enum NoticeType {
   N4
+  N1
+  N2
 }
 
 enum NoticeStatus {

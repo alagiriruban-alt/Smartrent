@@ -94,6 +94,9 @@ describe("parseTenant", () => {
       expect(parsed.data.leaseEnd).toBeNull();
       expect(parsed.data.email).toBeNull();
       expect(parsed.data.rentDueDay).toBe(1);
+      expect(parsed.data.moveInOn).toBe("2026-01-01");
+      expect(parsed.data.lastIncreaseOn).toBeNull();
+      expect(parsed.data.guidelineExempt).toBe(false);
     }
   });
 

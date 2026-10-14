@@ -208,6 +208,11 @@ export type TenantInput = {
   leaseEnd: string | null;
   monthlyRentCents: number;
   rentDueDay: number;
+  moveInOn: string;
+  lastIncreaseOn: string | null;
+  lastIncreaseCents: number | null;
+  guidelineExempt: boolean;
+  exemptionEvidence: string | null;
 };
 
 export function parseTenant(input: {
@@ -219,6 +224,11 @@ export function parseTenant(input: {
   leaseEnd: unknown;
   monthlyRent: unknown;
   rentDueDay: unknown;
+  moveInOn?: unknown;
+  lastIncreaseOn?: unknown;
+  lastIncreaseAmount?: unknown;
+  guidelineExempt?: unknown;
+  exemptionEvidence?: unknown;
 }): Parsed<TenantInput> {
   const parsed = z
     .object({
@@ -286,10 +296,49 @@ export function parseTenant(input: {
     }
   }
 
+  const moveInRaw = typeof input.moveInOn === "string" ? input.moveInOn.trim() : "";
+  const moveInOn = moveInRaw.length > 0 ? moveInRaw : parsed.data.leaseStart;
+  if (!isIsoDate(moveInOn)) {
+    errors.moveInOn = ["Enter the move-in date, or leave it blank to use the lease start."];
+  }
+
+  const lastIncreaseRaw =
+    typeof input.lastIncreaseOn === "string" ? input.lastIncreaseOn.trim() : "";
+  const lastAmountRaw =
+    typeof input.lastIncreaseAmount === "string" ? input.lastIncreaseAmount.trim() : "";
+  let lastIncreaseOn: string | null = null;
+  let lastIncreaseCents: number | null = null;
+  if (lastIncreaseRaw.length > 0 || lastAmountRaw.length > 0) {
+    if (!isIsoDate(lastIncreaseRaw)) {
+      errors.lastIncreaseOn = ["Enter the date of the last rent increase."];
+    } else if (isIsoDate(moveInOn) && lastIncreaseRaw < moveInOn) {
+      errors.lastIncreaseOn = ["The last increase cannot be before move-in."];
+    } else {
+      lastIncreaseOn = lastIncreaseRaw;
+    }
+    const increaseCents = parseCadToCents(lastAmountRaw);
+    if (increaseCents === null || increaseCents <= 0) {
+      errors.lastIncreaseAmount = ["Enter how much the rent went up, such as 45.00."];
+    } else {
+      lastIncreaseCents = increaseCents;
+    }
+  }
+
+  const evidenceRaw =
+    typeof input.exemptionEvidence === "string" ? input.exemptionEvidence.trim() : "";
+  if (evidenceRaw.length > 500) {
+    errors.exemptionEvidence = ["Use 500 characters or fewer."];
+  }
+  const guidelineExempt =
+    input.guidelineExempt === "on" ||
+    input.guidelineExempt === "true" ||
+    input.guidelineExempt === "yes";
+
   if (
     Object.keys(errors).length > 0 ||
     monthlyRentCents === null ||
-    !isIsoDate(parsed.data.leaseStart)
+    !isIsoDate(parsed.data.leaseStart) ||
+    !isIsoDate(moveInOn)
   ) {
     return { ok: false, errors };
   }
@@ -305,6 +354,11 @@ export function parseTenant(input: {
       leaseEnd,
       monthlyRentCents,
       rentDueDay: Number(parsed.data.rentDueDay),
+      moveInOn,
+      lastIncreaseOn,
+      lastIncreaseCents,
+      guidelineExempt,
+      exemptionEvidence: evidenceRaw.length > 0 ? evidenceRaw : null,
     },
   };
 }

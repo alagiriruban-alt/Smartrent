@@ -13,6 +13,11 @@ import {
   type TenancySnapshot,
 } from "@/lib/portfolio";
 import { loadPortfolio } from "@/lib/services/portfolio";
+import {
+  getIncreaseFormContext,
+  getRentIncreaseNotice,
+  listRentIncreases,
+} from "@/lib/services/rent-increase";
 
 export const requireUser = cache(async () => {
   const session = await auth();
@@ -36,6 +41,9 @@ const tenancySelect = {
   leaseEnd: true,
   monthlyRentCents: true,
   rentDueDay: true,
+  moveInOn: true,
+  lastIncreaseOn: true,
+  lastIncreaseCents: true,
   status: true,
   tenant: {
     select: {
@@ -129,4 +137,28 @@ export async function getTenancy(tenancyId: string) {
     notFound();
   }
   return tenancy;
+}
+
+export async function getIncreaseBoard() {
+  const user = await requireUser();
+  const rows = await listRentIncreases(user.id);
+  return { user, rows };
+}
+
+export async function getIncreaseDraft(tenancyId: string) {
+  const user = await requireUser();
+  const context = await getIncreaseFormContext(user.id, tenancyId);
+  if (!context) {
+    notFound();
+  }
+  return { user, context };
+}
+
+export async function getIncreaseNotice(noticeId: string) {
+  const user = await requireUser();
+  const notice = await getRentIncreaseNotice(user.id, noticeId);
+  if (!notice) {
+    notFound();
+  }
+  return { user, notice };
 }

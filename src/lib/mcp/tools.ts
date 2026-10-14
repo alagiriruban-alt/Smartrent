@@ -3,7 +3,7 @@ import type { AgentTokenScope } from "@prisma/client";
 import { consumeConfirmation, issueConfirmation } from "@/lib/agent/confirm";
 import { writeAgentAudit } from "@/lib/agent/audit";
 import { parseInteracEmail, rankTenants } from "@/lib/interac";
-import { todayDateOnly } from "@/lib/dates";
+import { isIsoDate, todayDateOnly } from "@/lib/dates";
 import { formatCad } from "@/lib/money";
 import { isPaymentMethod } from "@/lib/payment-methods";
 import { ServiceError } from "@/lib/services/errors";
@@ -20,6 +20,12 @@ import {
   recordRentPayment,
   saveN4Draft,
 } from "@/lib/services/rent";
+import { parseRentIncreaseForm } from "@/lib/rent-increase/parse";
+import {
+  assessRentIncrease,
+  listUpcomingRentIncreases,
+  saveRentIncreaseDraft,
+} from "@/lib/services/rent-increase";
 import { parsePayment, type PaymentInput } from "@/lib/validators";
 
 export type AgentContext = {
@@ -52,10 +58,12 @@ type ToolDefinition = {
 const INSTRUCTIONS = [
   "SmartRentBoss shows one landlord's properties, tenants, and rent ledger.",
   "Read tools answer immediately.",
-  "record_payment and prepare_n4_draft do not write on the first call. They return confirmationToken. Call the same tool again with that token and the same arguments to commit. The token expires in 15 minutes and works once.",
+  "record_payment, prepare_n4_draft, and prepare_rent_increase_notice do not write on the first call. They return confirmationToken. Call the same tool again with that token and the same arguments to commit. The token expires in 15 minutes and works once.",
   "ingest_etransfer_email records the payment when the sender, amount, date, and reference match one tenant at high confidence. Otherwise it returns pending_confirmation.",
   "The same e-Transfer reference is never posted twice.",
   "prepare_n4_draft returns draft data only. It never creates a PDF and it never serves a notice.",
+  "prepare_rent_increase_notice saves a draft only. It never serves a notice and it never creates a PDF. An N1 draft is refused when that year's Ontario guideline is not verified.",
+  "list_upcoming_rent_increases lists leases inside the 120-day Ontario increase window.",
 ].join(" ");
 
 export function mcpInstructions(): string {
@@ -256,6 +264,44 @@ const tools: ToolDefinition[] = [
         confirmationToken: { type: "string" },
       },
       required: ["tenancyId"],
+    },
+  },
+  {
+    name: "list_upcoming_rent_increases",
+    description:
+      "Active leases whose next Ontario rent increase is inside the 120-day alert window, including the serve-by date and whether the unit uses N1 or N2 data.",
+    scope: "READ",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "prepare_rent_increase_notice",
+    description:
+      "Draft an Ontario rent increase notice. N1 data when the unit is covered by the guideline, N2 data when the unit was first occupied residentially after November 15, 2018. The first call returns a preview and confirmationToken and does not save. Call again with the same arguments plus confirmationToken to save a draft. No PDF is created and the notice is not served. newRent is Canadian dollars.",
+    scope: "WRITE",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        tenancyId: { type: "string" },
+        effectiveOn: { type: "string", description: "Date the new rent starts, YYYY-MM-DD." },
+        newRent: {
+          description: "New monthly rent in Canadian dollars.",
+          anyOf: [{ type: "string" }, { type: "number" }],
+        },
+        confirmationToken: { type: "string" },
+      },
+      required: ["tenancyId", "effectiveOn", "newRent"],
     },
   },
 ];
@@ -556,6 +602,126 @@ async function ingestTool(ctx: AgentContext, args: Record<string, unknown>): Pro
   };
 }
 
+function newRentString(args: Record<string, unknown>): string {
+  const value = args.newRent;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  throw new ServiceError(
+    "invalid",
+    "Enter the new monthly rent in dollars, such as 1888.85.",
+  );
+}
+
+function draftPayload(draft: {
+  form: { code: string; name: string; officialUrl: string };
+  exempt: boolean;
+  currentRentCents: number;
+  newRentCents: number;
+  increaseCents: number;
+  increaseBasisPoints: number;
+  effectiveOn: string;
+  eligibleOn: string;
+  serveBy: string;
+  guidelineYear: number | null;
+  guidelineBasisPoints: number | null;
+  warnings: { code: string; message: string }[];
+}) {
+  return {
+    form: draft.form.code,
+    formName: draft.form.name,
+    officialFormUrl: draft.form.officialUrl,
+    exempt: draft.exempt,
+    currentRentCents: draft.currentRentCents,
+    newRentCents: draft.newRentCents,
+    increaseCents: draft.increaseCents,
+    increaseBasisPoints: draft.increaseBasisPoints,
+    effectiveOn: draft.effectiveOn,
+    eligibleOn: draft.eligibleOn,
+    serveBy: draft.serveBy,
+    guidelineYear: draft.guidelineYear,
+    guidelineBasisPoints: draft.guidelineBasisPoints,
+    warnings: draft.warnings,
+    fileGenerated: false,
+    served: false,
+  };
+}
+
+async function prepareRentIncreaseTool(
+  ctx: AgentContext,
+  args: Record<string, unknown>,
+): Promise<ToolOutcome> {
+  const tenancyId = requiredString(args, "tenancyId", "the lease id");
+  const effectiveOn = requiredString(args, "effectiveOn", "the effective date");
+  if (!isIsoDate(effectiveOn)) {
+    throw new ServiceError("invalid", "Enter the effective date as YYYY-MM-DD.");
+  }
+  const parsed = parseRentIncreaseForm({
+    effectiveOn,
+    newRent: newRentString(args),
+  });
+  if (!parsed.ok) {
+    const message = Object.values(parsed.errors)
+      .flat()
+      .filter((item): item is string => Boolean(item))
+      .join(" ");
+    throw new ServiceError("invalid", message || "That notice could not be read.");
+  }
+  const payload = {
+    tenancyId,
+    effectiveOn: parsed.data.effectiveOn,
+    newRentCents: parsed.data.newRentCents,
+  };
+  const confirmationToken = optionalString(args, "confirmationToken");
+  if (!confirmationToken) {
+    const assessed = await assessRentIncrease(ctx.ownerId, payload);
+    if (assessed.status === "not_found") {
+      throw new ServiceError("not_found", "That lease was not found.");
+    }
+    if (assessed.status !== "ready") {
+      throw new ServiceError("invalid", assessed.message);
+    }
+    const issued = await issueConfirmation({
+      ownerId: ctx.ownerId,
+      tool: "prepare_rent_increase_notice",
+      payload,
+    });
+    return {
+      result: {
+        status: "confirmation_required",
+        confirmationToken: issued.secret,
+        expiresAt: issued.expiresAt,
+        draft: draftPayload(assessed),
+      },
+      summary: via(`Previewed an ${assessed.form.code} draft for ${assessed.tenantName}`),
+      auditStatus: "pending",
+    };
+  }
+  await consumeConfirmation({
+    ownerId: ctx.ownerId,
+    secret: confirmationToken,
+    tool: "prepare_rent_increase_notice",
+    payload,
+  });
+  const saved = await saveRentIncreaseDraft(ctx.ownerId, payload);
+  return {
+    result: {
+      status: "draft",
+      noticeId: saved.noticeId,
+      persisted: true,
+      fileGenerated: false,
+      noticeStatus: "DRAFT",
+      tenantName: saved.tenantName,
+      draft: draftPayload(saved.draft),
+    },
+    summary: via(`Saved an ${saved.draft.form.code} draft for ${saved.tenantName}`),
+    auditStatus: "ok",
+  };
+}
+
 async function prepareN4Tool(
   ctx: AgentContext,
   args: Record<string, unknown>,
@@ -681,6 +847,18 @@ async function runTool(ctx: AgentContext, name: string, args: Record<string, unk
     }
     case "prepare_n4_draft":
       return prepareN4Tool(ctx, args);
+    case "list_upcoming_rent_increases": {
+      const increases = await listUpcomingRentIncreases(ctx.ownerId);
+      return {
+        result: { increases },
+        summary: via(
+          `Listed ${increases.length} upcoming rent ${increases.length === 1 ? "increase" : "increases"}`,
+        ),
+        auditStatus: "ok",
+      };
+    }
+    case "prepare_rent_increase_notice":
+      return prepareRentIncreaseTool(ctx, args);
     default:
       throw new ServiceError("invalid", `Unknown tool ${name}.`);
   }
