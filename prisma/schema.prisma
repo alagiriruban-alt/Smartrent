@@ -1,0 +1,244 @@
+// SmartRentBoss data model.
+// The app currently reads and writes users, properties, units, tenants,
+// and tenancies. The other models are here so later modules (a rent
+// ledger, CRA T776 expenses, documents, and N4 notices) have a place to
+// land without a redesign. Those screens are not built yet.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  properties Property[]
+  tenants    Tenant[]
+  expenses   Expense[]
+  documents  Document[]
+  notices    Notice[]
+  payments   RentPayment[]
+}
+
+model Property {
+  id            String   @id @default(cuid())
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String?
+  streetAddress String
+  city          String
+  province      String   @default("ON")
+  postalCode    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  units     Unit[]
+  expenses  Expense[]
+  documents Document[]
+
+  @@index([ownerId])
+}
+
+model Unit {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  label      String
+  bedrooms   Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenancies Tenancy[]
+  expenses  Expense[]
+  documents Document[]
+
+  @@index([propertyId])
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenancies Tenancy[]
+
+  @@index([ownerId])
+}
+
+model Tenancy {
+  id               String         @id @default(cuid())
+  unitId           String
+  unit             Unit           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leaseStart       DateTime       @db.Date
+  leaseEnd         DateTime?      @db.Date
+  monthlyRentCents Int
+  rentDueDay       Int
+  status           TenancyStatus  @default(ACTIVE)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  payments  RentPayment[]
+  notices   Notice[]
+  documents Document[]
+
+  @@index([unitId])
+  @@index([tenantId])
+}
+
+enum TenancyStatus {
+  ACTIVE
+  ENDED
+}
+
+// Rent collected against a lease. Not shown in the app yet.
+model RentPayment {
+  id          String        @id @default(cuid())
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenancyId   String
+  tenancy     Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  amountCents Int
+  paidOn      DateTime      @db.Date
+  periodStart DateTime      @db.Date
+  periodEnd   DateTime      @db.Date
+  method      PaymentMethod
+  note        String?
+  createdAt   DateTime      @default(now())
+
+  @@index([ownerId])
+  @@index([tenancyId])
+}
+
+enum PaymentMethod {
+  E_TRANSFER
+  CHEQUE
+  CASH
+  PRE_AUTHORIZED
+  OTHER
+}
+
+// Operating expenses, grouped the way CRA form T776 lists them.
+// Not shown in the app yet.
+model Expense {
+  id          String       @id @default(cuid())
+  ownerId     String
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  propertyId  String
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitId      String?
+  unit        Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  incurredOn  DateTime     @db.Date
+  amountCents Int
+  category    T776Category
+  vendor      String?
+  description String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  documents Document[]
+
+  @@index([ownerId])
+  @@index([propertyId])
+}
+
+// Line numbers match the expense section of CRA form T776.
+enum T776Category {
+  ADVERTISING
+  INSURANCE
+  INTEREST_BANK_CHARGES
+  OFFICE
+  PROFESSIONAL_FEES
+  MANAGEMENT_FEES
+  REPAIRS_MAINTENANCE
+  SALARIES_WAGES
+  PROPERTY_TAXES
+  TRAVEL
+  UTILITIES
+  MOTOR_VEHICLE
+  OTHER
+}
+
+// Files such as leases, notices, and receipts. Storage itself is not
+// built yet; storageKey is the future location of the file.
+model Document {
+  id         String       @id @default(cuid())
+  ownerId    String
+  owner      User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  propertyId String?
+  property   Property?    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitId     String?
+  unit       Unit?        @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tenancyId  String?
+  tenancy    Tenancy?     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  expenseId  String?
+  expense    Expense?     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  noticeId   String?
+  notice     Notice?      @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  kind       DocumentKind
+  fileName   String
+  storageKey String
+  mimeType   String?
+  byteSize   Int?
+  createdAt  DateTime     @default(now())
+
+  @@index([ownerId])
+}
+
+enum DocumentKind {
+  LEASE
+  NOTICE
+  RECEIPT
+  INVOICE
+  OTHER
+}
+
+// Ontario Landlord and Tenant Board notices. N4 is the non-payment
+// notice. Not shown in the app yet.
+model Notice {
+  id               String       @id @default(cuid())
+  ownerId          String
+  owner            User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenancyId        String
+  tenancy          Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  type             NoticeType
+  status           NoticeStatus @default(DRAFT)
+  totalOwingCents  Int?
+  terminationDate  DateTime?    @db.Date
+  servedOn         DateTime?    @db.Date
+  serviceMethod    String?
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  documents Document[]
+
+  @@index([ownerId])
+  @@index([tenancyId])
+}
+
+enum NoticeType {
+  N4
+}
+
+enum NoticeStatus {
+  DRAFT
+  SERVED
+  VOID
+}
