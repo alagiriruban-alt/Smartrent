@@ -1,14 +1,20 @@
 import Link from "next/link";
 
-import { primaryButton, card } from "@/components/styles";
-import { formatAddress, propertyTitle } from "@/lib/format";
+import { primaryButton, secondaryButton, card } from "@/components/styles";
+import { formatAddress, propertyTitle, daysLateLabel } from "@/lib/format";
 import { formatCad } from "@/lib/money";
 import { getPortfolio } from "@/lib/dal";
+import { getRentOverview } from "@/lib/rent-data";
 
 export const metadata = { title: "Rent roll" };
 
 export default async function DashboardPage() {
   const { rows, totals } = await getPortfolio();
+  const rent = await getRentOverview();
+  const collectedPct =
+    rent.expectedCents === 0
+      ? 0
+      : Math.min(100, Math.round((rent.collectedCents / rent.expectedCents) * 100));
 
   return (
     <div>
@@ -35,6 +41,69 @@ export default async function DashboardPage() {
           Add a property
         </Link>
       </div>
+
+      <section className={`${card} mt-8 p-4`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-gold">
+              {rent.monthLabel}
+            </p>
+            <h2 className="mt-1 font-serif text-3xl tracking-tight">
+              {formatCad(rent.collectedCents)}
+              <span className="ml-2 font-sans text-base font-normal text-muted">
+                collected of {formatCad(rent.expectedCents)} expected
+              </span>
+            </h2>
+          </div>
+          <Link href="/dashboard/rent/payments/new" className={secondaryButton}>
+            Record a payment
+          </Link>
+        </div>
+        <div className="mt-4 h-2 overflow-hidden rounded-full bg-line">
+          <div
+            className="h-full rounded-full bg-pine"
+            style={{ width: `${collectedPct}%` }}
+          />
+        </div>
+        <p className="mt-2 text-sm text-muted">
+          {formatCad(rent.outstandingCents)} still to collect this month
+        </p>
+      </section>
+
+      <section className="mt-8">
+        <h2 className="font-serif text-2xl">Late and in arrears</h2>
+        {rent.late.length === 0 ? (
+          <p className={`${card} mt-4 p-4 text-muted`}>No one is past due.</p>
+        ) : (
+          <ul className="mt-4 flex flex-col gap-3">
+            {rent.late.map((tenant) => (
+              <li key={tenant.tenancyId}>
+                <Link
+                  href={`/dashboard/tenancies/${tenant.tenancyId}/rent`}
+                  className={`${card} block p-4 transition-colors hover:border-danger/40`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{tenant.tenantName}</p>
+                      <p className="mt-1 text-sm text-muted">
+                        {tenant.unitLabel} · {tenant.propertyLabel}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-serif text-2xl tabular-nums text-danger">
+                        {formatCad(tenant.arrearsCents)}
+                      </p>
+                      <p className="text-sm text-danger">
+                        {daysLateLabel(tenant.daysLate)}
+                      </p>
+                    </div>
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {rows.length === 0 ? (
         <div className={`${card} mt-8 p-6`}>

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { isIsoDate } from "@/lib/dates";
 import { parseCadToCents } from "@/lib/money";
+import { isPaymentMethod, type RentPaymentMethod } from "@/lib/payment-methods";
 import { normalizePostalCode } from "@/lib/postal";
 import { isProvinceCode, type ProvinceCode } from "@/lib/provinces";
 
@@ -311,4 +312,120 @@ export function parseTenant(input: {
 export function formString(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+export function formStrings(formData: FormData, key: string) {
+  return formData
+    .getAll(key)
+    .filter((value): value is string => typeof value === "string");
+}
+
+export type PaymentInput = {
+  tenancyId: string;
+  paidOn: string;
+  amountCents: number;
+  method: RentPaymentMethod;
+  referenceNumber: string | null;
+  note: string | null;
+};
+
+export function parsePayment(
+  input: {
+    tenancyId: unknown;
+    paidOn: unknown;
+    amount: unknown;
+    method: unknown;
+    referenceNumber: unknown;
+    note: unknown;
+  },
+  today: string,
+): Parsed<PaymentInput> {
+  const tenancyId = typeof input.tenancyId === "string" ? input.tenancyId.trim() : "";
+  const paidOn = typeof input.paidOn === "string" ? input.paidOn.trim() : "";
+  const amount = typeof input.amount === "string" ? input.amount.trim() : "";
+  const method = typeof input.method === "string" ? input.method.trim() : "";
+  const reference =
+    typeof input.referenceNumber === "string" ? input.referenceNumber.trim() : "";
+  const note = typeof input.note === "string" ? input.note.trim() : "";
+  const errors: FieldErrors = {};
+
+  if (!tenancyId) {
+    errors.tenancyId = ["Choose the lease this payment belongs to."];
+  }
+  if (!isIsoDate(paidOn)) {
+    errors.paidOn = ["Enter the date you received the money."];
+  } else if (paidOn > today) {
+    errors.paidOn = ["The payment date cannot be in the future."];
+  }
+  const amountCents = parseCadToCents(amount);
+  if (amountCents === null || amountCents <= 0) {
+    errors.amount = ["Enter an amount from $0.01 to $100,000.00."];
+  }
+  if (!isPaymentMethod(method)) {
+    errors.method = ["Choose how the tenant paid."];
+  }
+  if (reference.length > 40) {
+    errors.referenceNumber = ["Use 40 characters or fewer."];
+  }
+  if (note.length > 500) {
+    errors.note = ["Use 500 characters or fewer."];
+  }
+  if (Object.keys(errors).length > 0 || amountCents === null || !isPaymentMethod(method)) {
+    return { ok: false, errors };
+  }
+  return {
+    ok: true,
+    data: {
+      tenancyId,
+      paidOn,
+      amountCents,
+      method,
+      referenceNumber: reference.length > 0 ? reference : null,
+      note: note.length > 0 ? note : null,
+    },
+  };
+}
+
+function parseOffset(value: string): number | null {
+  if (!/^-?\d{1,3}$/.test(value.trim())) {
+    return null;
+  }
+  const offset = Number(value);
+  if (!Number.isInteger(offset) || offset < -60 || offset > 90) {
+    return null;
+  }
+  return offset;
+}
+
+export function parseReminderSchedule(input: {
+  offsetDays: string[];
+  enabled: string[];
+}): Parsed<{ rules: { offsetDays: number; enabled: boolean }[] }> {
+  const enabled = new Set(
+    input.enabled
+      .map((value) => parseOffset(value))
+      .filter((value): value is number => value !== null),
+  );
+  const rules: { offsetDays: number; enabled: boolean }[] = [];
+  const seen = new Set<number>();
+  for (const value of input.offsetDays) {
+    const offset = parseOffset(value);
+    if (offset === null) {
+      return {
+        ok: false,
+        errors: {
+          offsetDays: ["Use a whole number of days from 60 before to 90 after."],
+        },
+      };
+    }
+    if (seen.has(offset)) {
+      return {
+        ok: false,
+        errors: { offsetDays: ["That reminder is already on the schedule."] },
+      };
+    }
+    seen.add(offset);
+    rules.push({ offsetDays: offset, enabled: enabled.has(offset) });
+  }
+  return { ok: true, data: { rules } };
 }

@@ -31,3 +31,9 @@ body {
 ::selection {
   background: #d5eadf;
 }
+
+@media print {
+  body {
+    background: white;
+  }
+}
