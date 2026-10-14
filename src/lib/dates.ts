@@ -30,6 +30,22 @@ export function monthStart(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
 
+/**
+ * Add calendar months and clamp the day to the last real day of the
+ * target month. 29 February 2024 plus 12 months is 28 February 2025.
+ */
+export function addCalendarMonths(iso: string, months: number): string {
+  const year = Number(iso.slice(0, 4));
+  const monthIndex = Number(iso.slice(5, 7)) - 1;
+  const day = Number(iso.slice(8, 10));
+  const shifted = monthIndex + months;
+  const nextYear = year + Math.floor(shifted / 12);
+  const nextMonthIndex = ((shifted % 12) + 12) % 12;
+  const nextMonth = nextMonthIndex + 1;
+  const nextDay = Math.min(day, lastDayOfMonth(nextYear, nextMonth));
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(nextDay).padStart(2, "0")}`;
+}
+
 export function addMonths(monthStartIso: string, count: number): string {
   const year = Number(monthStartIso.slice(0, 4));
   const month = Number(monthStartIso.slice(5, 7));

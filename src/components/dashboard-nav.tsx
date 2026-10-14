@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const links = [
   { href: "/dashboard", label: "Rent roll" },
   { href: "/dashboard/rent", label: "Rent" },
+  { href: "/dashboard/rent-increases", label: "Increases" },
   { href: "/dashboard/reminders", label: "Reminders" },
   { href: "/dashboard/settings/agent", label: "Settings" },
 ];
@@ -18,9 +19,17 @@ function isActive(pathname: string, href: string) {
   }
   if (href === "/dashboard/rent") {
     return (
-      pathname.startsWith("/dashboard/rent") ||
+      pathname === "/dashboard/rent" ||
+      pathname.startsWith("/dashboard/rent/") ||
       pathname.startsWith("/dashboard/payments") ||
-      pathname.includes("/rent")
+      /\/tenancies\/[^/]+\/rent$/.test(pathname)
+    );
+  }
+  if (href === "/dashboard/rent-increases") {
+    return (
+      pathname.startsWith("/dashboard/rent-increases") ||
+      pathname.includes("/rent-increase") ||
+      pathname.includes("/notices/")
     );
   }
   if (href === "/dashboard/settings/agent") {

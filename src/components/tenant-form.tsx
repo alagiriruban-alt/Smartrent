@@ -36,6 +36,11 @@ export function TenantForm({
     leaseEnd?: string | null;
     monthlyRent?: string;
     rentDueDay?: number;
+    moveInOn?: string;
+    lastIncreaseOn?: string;
+    lastIncreaseAmount?: string;
+    guidelineExempt?: boolean;
+    exemptionEvidence?: string;
   };
 }) {
   const [state, formAction] = useActionState(action, {});
@@ -165,6 +170,82 @@ export function TenantForm({
           </select>
         </Field>
       </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Move-in date"
+          htmlFor="moveInOn"
+          hint="Leave blank to use the lease start. This is the day the tenant took the unit."
+          error={error("moveInOn")}
+        >
+          <input
+            id="moveInOn"
+            name="moveInOn"
+            type="date"
+            defaultValue={initial?.moveInOn ?? ""}
+            className={textInput}
+            aria-invalid={Boolean(error("moveInOn"))}
+          />
+        </Field>
+        <Field
+          label="Last rent increase date"
+          htmlFor="lastIncreaseOn"
+          hint="Leave blank if the rent has not gone up yet."
+          error={error("lastIncreaseOn")}
+        >
+          <input
+            id="lastIncreaseOn"
+            name="lastIncreaseOn"
+            type="date"
+            defaultValue={initial?.lastIncreaseOn ?? ""}
+            className={textInput}
+            aria-invalid={Boolean(error("lastIncreaseOn"))}
+          />
+        </Field>
+      </div>
+      <Field
+        label="Last increase amount (CAD)"
+        htmlFor="lastIncreaseAmount"
+        hint="The amount the rent went up, not the new rent. Required when you enter a last increase date."
+        error={error("lastIncreaseAmount")}
+      >
+        <input
+          id="lastIncreaseAmount"
+          name="lastIncreaseAmount"
+          inputMode="decimal"
+          defaultValue={initial?.lastIncreaseAmount ?? ""}
+          className={textInput}
+          placeholder="45.00"
+          aria-invalid={Boolean(error("lastIncreaseAmount"))}
+        />
+      </Field>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="guidelineExempt"
+          value="on"
+          defaultChecked={initial?.guidelineExempt ?? false}
+          className="mt-1"
+        />
+        <span>
+          This unit was first occupied for residential use after November 15,
+          2018. The Ontario guideline does not cap the increase. This applies
+          to the unit, including every lease on it.
+        </span>
+      </label>
+      <Field
+        label="Exemption evidence"
+        htmlFor="exemptionEvidence"
+        hint="Optional. A permit, invoice, or other note you would keep if the exemption is questioned."
+        error={error("exemptionEvidence")}
+      >
+        <input
+          id="exemptionEvidence"
+          name="exemptionEvidence"
+          defaultValue={initial?.exemptionEvidence ?? ""}
+          className={textInput}
+          aria-invalid={Boolean(error("exemptionEvidence"))}
+        />
+      </Field>
       <div>
         <SubmitButton pendingLabel={pendingLabel}>{submitLabel}</SubmitButton>
       </div>

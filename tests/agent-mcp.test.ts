@@ -44,6 +44,7 @@ async function makeLandlord(label: string) {
             create: {
               tenantId: tenant.id,
               leaseStart: dateOnlyToUtc("2026-01-01"),
+              moveInOn: dateOnlyToUtc("2026-01-01"),
               monthlyRentCents: 100_000,
               rentDueDay: 1,
             },

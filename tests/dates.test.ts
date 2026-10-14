@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addCalendarMonths,
   addDays,
   formatLongDate,
   isIsoDate,
@@ -25,6 +26,15 @@ describe("calendar dates", () => {
   it("adds calendar days", () => {
     expect(addDays("2026-10-14", 14)).toBe("2026-10-28");
     expect(addDays("2026-01-31", 1)).toBe("2026-02-01");
+  });
+
+  it("clamps month math on leap day and counts 90 days across February", () => {
+    expect(addCalendarMonths("2024-02-29", 12)).toBe("2025-02-28");
+    expect(addCalendarMonths("2024-01-31", 1)).toBe("2024-02-29");
+    expect(addCalendarMonths("2025-01-31", 1)).toBe("2025-02-28");
+    expect(addCalendarMonths("2027-01-22", -12)).toBe("2026-01-22");
+    expect(addDays("2024-05-01", -90)).toBe("2024-02-01");
+    expect(addDays("2025-05-01", -90)).toBe("2025-01-31");
   });
 
   it("rejects impossible dates", () => {

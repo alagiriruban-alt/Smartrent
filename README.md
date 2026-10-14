@@ -121,6 +121,14 @@ That sample is dated from the day you run the seed, so Sam is late whenever toda
 - See, on the rent roll, how much of this month's rent is collected and who is late, with the amount owed and how many days late.
 - Set a reminder schedule, such as 3 days before the due date, the due date, and 3 days late. The app lists who matches that schedule and shows an email you can copy. It does not send email.
 - Open a receipt for a payment, print it, or download a PDF.
+- Record a move-in date and, if the rent has already gone up once, the date and amount of that increase.
+- Mark a unit that was first lived in after November 15, 2018. That unit is exempt from the Ontario guideline. You can keep a short note of the evidence.
+- See, on the rent roll, which leases can take a rent increase in the next 120 days, and a reminder in the 14 days before the last day to give 90 days' written notice.
+- Draft a rent increase notice. A unit covered by the guideline gets N1 data, filled to the verified guideline percent. An exempt unit gets N2 data, and you choose the amount. Print it or download a PDF. The page is marked DRAFT and says it is not legal advice. It is not the official Landlord and Tenant Board form. Use the link on the draft to open the current form.
+- The draft warns you if the increase is above the guideline, if the effective date is less than 12 months after move-in or the last increase, or if fewer than 90 days remain before that date. You can still save the draft after you read the warning.
+- Keep the yearly Ontario guideline percents under Settings. Each year has a source link and a verified flag. An N1 draft is blocked until that year's guideline is verified. N2 drafts are not blocked by the guideline, because the guideline does not apply.
+
+The sample landlord has Jordan Patel eligible for an increase inside the 120-day window, and the lower unit marked guideline-exempt. Running the seed again refreshes Jordan's last-increase date so that window stays current, and it puts the guideline years back to the checked percents. The guideline years 2018 through 2027 are copied from [Ontario's rent increase guideline page](https://www.ontario.ca/page/residential-rent-increases) and stored as verified. That page, updated June 23, 2026, lists 2026 as 2.1% and 2027 as 1.9%.
 - Create a personal token under **Settings** so an assistant can use the same records. You can revoke the token on that page. What the assistant did is listed in the audit log, tagged **via agent**.
 
 Passwords are stored as a hash. The app never keeps the original password. Agent tokens are stored as a hash too. The secret is shown once, when you create it.

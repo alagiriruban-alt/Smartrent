@@ -18,6 +18,11 @@ function tenantFields(formData: FormData) {
     leaseEnd: formString(formData, "leaseEnd"),
     monthlyRent: formString(formData, "monthlyRent"),
     rentDueDay: formString(formData, "rentDueDay"),
+    moveInOn: formString(formData, "moveInOn"),
+    lastIncreaseOn: formString(formData, "lastIncreaseOn"),
+    lastIncreaseAmount: formString(formData, "lastIncreaseAmount"),
+    guidelineExempt: formData.get("guidelineExempt"),
+    exemptionEvidence: formString(formData, "exemptionEvidence"),
   };
 }
 
@@ -74,6 +79,13 @@ export async function createTenant(
         phone: parsed.data.phone,
       },
     });
+    await tx.unit.update({
+      where: { id: unit.id },
+      data: {
+        guidelineExempt: parsed.data.guidelineExempt,
+        exemptionEvidence: parsed.data.exemptionEvidence,
+      },
+    });
     await tx.tenancy.create({
       data: {
         unitId: unit.id,
@@ -84,6 +96,11 @@ export async function createTenant(
           : null,
         monthlyRentCents: parsed.data.monthlyRentCents,
         rentDueDay: parsed.data.rentDueDay,
+        moveInOn: dateOnlyToUtc(parsed.data.moveInOn),
+        lastIncreaseOn: parsed.data.lastIncreaseOn
+          ? dateOnlyToUtc(parsed.data.lastIncreaseOn)
+          : null,
+        lastIncreaseCents: parsed.data.lastIncreaseCents,
       },
     });
   });
@@ -138,6 +155,13 @@ export async function updateTenant(
         phone: parsed.data.phone,
       },
     }),
+    prisma.unit.update({
+      where: { id: tenancy.unitId },
+      data: {
+        guidelineExempt: parsed.data.guidelineExempt,
+        exemptionEvidence: parsed.data.exemptionEvidence,
+      },
+    }),
     prisma.tenancy.update({
       where: { id: tenancy.id },
       data: {
@@ -147,6 +171,11 @@ export async function updateTenant(
           : null,
         monthlyRentCents: parsed.data.monthlyRentCents,
         rentDueDay: parsed.data.rentDueDay,
+        moveInOn: dateOnlyToUtc(parsed.data.moveInOn),
+        lastIncreaseOn: parsed.data.lastIncreaseOn
+          ? dateOnlyToUtc(parsed.data.lastIncreaseOn)
+          : null,
+        lastIncreaseCents: parsed.data.lastIncreaseCents,
       },
     }),
   ]);

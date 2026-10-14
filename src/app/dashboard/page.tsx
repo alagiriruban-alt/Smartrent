@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { IncreaseList } from "@/components/increase-list";
 import { primaryButton, secondaryButton, card } from "@/components/styles";
 import { formatAddress, propertyTitle, daysLateLabel } from "@/lib/format";
 import { formatCad } from "@/lib/money";
-import { getPortfolio } from "@/lib/dal";
+import { getIncreaseBoard, getPortfolio } from "@/lib/dal";
 import { getRentOverview } from "@/lib/rent-data";
 
 export const metadata = { title: "Rent roll" };
@@ -11,6 +12,8 @@ export const metadata = { title: "Rent roll" };
 export default async function DashboardPage() {
   const { rows, totals } = await getPortfolio();
   const rent = await getRentOverview();
+  const increases = await getIncreaseBoard();
+  const upcomingIncreases = increases.rows.filter((row) => row.alerts.length > 0);
   const collectedPct =
     rent.expectedCents === 0
       ? 0
@@ -68,6 +71,19 @@ export default async function DashboardPage() {
         <p className="mt-2 text-sm text-muted">
           {formatCad(rent.outstandingCents)} still to collect this month
         </p>
+      </section>
+
+      <section className="mt-8">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="font-serif text-2xl">Rent increase alerts</h2>
+          <Link href="/dashboard/rent-increases" className="text-sm font-semibold text-pine">
+            All increases
+          </Link>
+        </div>
+        <IncreaseList
+          rows={upcomingIncreases}
+          empty="No increase is eligible in the next 120 days."
+        />
       </section>
 
       <section className="mt-8">

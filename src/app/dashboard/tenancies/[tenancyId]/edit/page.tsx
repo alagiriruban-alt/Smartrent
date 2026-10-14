@@ -40,6 +40,16 @@ export default async function EditTenancyPage({
             leaseEnd: tenancy.leaseEnd ? utcToDateOnly(tenancy.leaseEnd) : "",
             monthlyRent: centsToInput(tenancy.monthlyRentCents),
             rentDueDay: tenancy.rentDueDay,
+            moveInOn: utcToDateOnly(tenancy.moveInOn),
+            lastIncreaseOn: tenancy.lastIncreaseOn
+              ? utcToDateOnly(tenancy.lastIncreaseOn)
+              : "",
+            lastIncreaseAmount:
+              tenancy.lastIncreaseCents !== null
+                ? centsToInput(tenancy.lastIncreaseCents)
+                : "",
+            guidelineExempt: tenancy.unit.guidelineExempt,
+            exemptionEvidence: tenancy.unit.exemptionEvidence ?? "",
           }}
         />
       </div>

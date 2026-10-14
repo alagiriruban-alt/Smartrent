@@ -6,6 +6,7 @@ import { DeleteForm } from "@/components/delete-form";
 import { card, secondaryButton } from "@/components/styles";
 import { getUnit } from "@/lib/dal";
 import { formatLongDate, utcToDateOnly } from "@/lib/dates";
+import { increaseSchedule, rulesForProvince } from "@/lib/rent-increase/rules";
 import {
   bedroomLabel,
   formatAddress,
@@ -15,6 +16,22 @@ import {
 } from "@/lib/format";
 import { formatCad } from "@/lib/money";
 import { tenancyPhase, type TenancyPhase } from "@/lib/portfolio";
+
+function eligibleLabel(
+  tenancy: { moveInOn: Date; lastIncreaseOn: Date | null },
+  province: string,
+): string {
+  const rules = rulesForProvince(province);
+  if (!rules) {
+    return "Rules for this province are not available yet.";
+  }
+  const schedule = increaseSchedule(
+    rules,
+    utcToDateOnly(tenancy.moveInOn),
+    tenancy.lastIncreaseOn ? utcToDateOnly(tenancy.lastIncreaseOn) : null,
+  );
+  return `${formatLongDate(schedule.eligibleOn)} (serve by ${formatLongDate(schedule.serveBy)})`;
+}
 
 const phaseLabel: Record<TenancyPhase, string> = {
   current: "Current lease",
@@ -66,6 +83,14 @@ export default async function UnitPage({
           <h1 className="font-serif text-4xl tracking-tight">{unit.label}</h1>
           <p className="mt-2 text-muted">{formatAddress(property)}</p>
           {beds ? <p className="mt-1 text-sm">{beds}</p> : null}
+          <p className="mt-2 text-sm">
+            {unit.guidelineExempt
+              ? "Guideline exempt. First residential occupancy was after November 15, 2018."
+              : "Covered by the Ontario rent increase guideline, unless you mark it exempt."}
+          </p>
+          {unit.exemptionEvidence ? (
+            <p className="mt-1 text-sm text-muted">{unit.exemptionEvidence}</p>
+          ) : null}
         </div>
         <Link
           href={`/dashboard/properties/${property.id}/units/${unit.id}/edit`}
@@ -103,6 +128,12 @@ export default async function UnitPage({
                       Rent ledger
                     </Link>
                     <Link
+                      href={`/dashboard/tenancies/${tenancy.id}/rent-increase`}
+                      className={secondaryButton}
+                    >
+                      Rent increase
+                    </Link>
+                    <Link
                       href={`/dashboard/tenancies/${tenancy.id}/edit`}
                       className={secondaryButton}
                     >
@@ -124,6 +155,10 @@ export default async function UnitPage({
                   <div>
                     <dt className="text-muted">Due</dt>
                     <dd>The {ordinal(tenancy.rentDueDay)} of each month</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted">Next eligible increase</dt>
+                    <dd>{eligibleLabel(tenancy, property.province)}</dd>
                   </div>
                   <div>
                     <dt className="text-muted">Lease</dt>

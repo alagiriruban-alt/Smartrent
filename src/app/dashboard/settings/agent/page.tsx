@@ -39,6 +39,11 @@ export default async function AgentAccessPage() {
         you allow it, record rent. The token is stored as a hash. You can
         revoke it here at any time.
       </p>
+      <p className="mt-3 text-sm">
+        <Link href="/dashboard/settings/guidelines" className="font-semibold text-pine">
+          Ontario rent increase guideline
+        </Link>
+      </p>
 
       <section className={`${card} mt-8 p-4`}>
         <h2 className="font-serif text-2xl">New token</h2>
