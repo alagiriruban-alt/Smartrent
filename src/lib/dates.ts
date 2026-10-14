@@ -43,6 +43,12 @@ export function lastDayOfMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
+export function addDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return date.toISOString().slice(0, 10);
+}
+
 export function daysBetween(startIso: string, endIso: string): number {
   const [startYear, startMonth, startDay] = startIso.split("-").map(Number);
   const [endYear, endMonth, endDay] = endIso.split("-").map(Number);

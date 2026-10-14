@@ -121,8 +121,54 @@ That sample is dated from the day you run the seed, so Sam is late whenever toda
 - See, on the rent roll, how much of this month's rent is collected and who is late, with the amount owed and how many days late.
 - Set a reminder schedule, such as 3 days before the due date, the due date, and 3 days late. The app lists who matches that schedule and shows an email you can copy. It does not send email.
 - Open a receipt for a payment, print it, or download a PDF.
+- Create a personal token under **Settings** so an assistant can use the same records. You can revoke the token on that page. What the assistant did is listed in the audit log, tagged **via agent**.
 
-Passwords are stored as a hash. The app never keeps the original password.
+Passwords are stored as a hash. The app never keeps the original password. Agent tokens are stored as a hash too. The secret is shown once, when you create it.
+
+## Connect an assistant (MCP)
+
+An assistant such as Grok Bot can work on this account through the MCP endpoint at `/api/mcp`. The app speaks [streamable HTTP](https://modelcontextprotocol.io): one POST per call, with a bearer token.
+
+1. Sign in and open **Settings**.
+2. Name the token and choose **Read**, or **Read and write**.
+3. Copy the token. It starts with `srb_`. You will not see it again.
+4. Point the MCP client at `http://localhost:3000/api/mcp` and send the token as `Authorization: Bearer srb_...`.
+
+A read token can list properties, tenants, rent status, late tenants, reminders, and receipts. It can also parse an e-Transfer email. A write token can record a payment, ingest an e-Transfer, and save an N4 draft.
+
+Writes that move money, and the N4 draft, do not save on the first call. The tool returns `confirmationToken`. Call the same tool again with that token and the same arguments. The token lasts 15 minutes and works once. `ingest_etransfer_email` is the exception: when the sender, amount, date, and reference match one tenant, it records immediately. A weaker match returns `pending_confirmation` and waits for the token. The same e-Transfer reference is never posted twice.
+
+`prepare_n4_draft` returns the amounts and dates for an N4. It does not create a PDF and it does not serve a notice.
+
+Each call is limited (60 per minute by default) and can see only the landlord who created the token.
+
+Example. List who is late:
+
+```bash
+curl -s http://localhost:3000/api/mcp \
+  -H "Authorization: Bearer srb_your_token" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_late_tenants","arguments":{}}}'
+```
+
+Example. Preview a payment, then confirm it:
+
+```bash
+curl -s http://localhost:3000/api/mcp \
+  -H "Authorization: Bearer srb_your_token" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"record_payment","arguments":{"tenancyId":"LEASE_ID","paidOn":"2026-10-14","amount":"25.00","method":"E_TRANSFER","referenceNumber":"CA123"}}}'
+```
+
+The response includes `confirmationToken`. Send the same arguments again with that token added. To exercise every tool against the sample landlord, with the database running and the seed loaded:
+
+```bash
+npm run mcp:check
+```
+
+That check signs in as the sample landlord through the MCP endpoint. It replaces tokens named Grok Bot and Old laptop, and it clears that account's agent audit log, then runs the tools again.
 
 ## Checks
 
@@ -133,7 +179,7 @@ npm test
 npm run lint
 ```
 
-`npm test` runs the automated checks for rent totals, the ledger, the Interac paste, reminders, receipts, dates, postal codes, and form rules. `npm run lint` looks for common coding mistakes.
+`npm test` runs the automated checks for rent totals, the ledger, the Interac paste, reminders, receipts, dates, postal codes, form rules, and agent access (a token stays inside its own landlord, a payment waits for confirmation, and an e-Transfer reference cannot be posted twice). The database from `docker compose up -d` has to be running, because those agent checks use it. `npm run lint` looks for common coding mistakes.
 
 ## If something goes wrong
 
@@ -163,12 +209,15 @@ When it asks for a password, enter `smartrent`. If you choose a different passwo
 ## Where things live
 
 ```text
-src/app          pages (home, sign in, rent roll, ledger, receipts)
+src/app          pages (home, sign in, rent roll, ledger, receipts, agent access)
+src/app/api/mcp  the assistant endpoint
 src/actions      what the forms save
 src/lib          rules for money, dates, rent, and who can see a record
+src/lib/services the same rent and portfolio actions the pages and the assistant use
 src/components   shared pieces of the pages
 prisma           the database shape, migrations, and sample data
 tests            automated checks
+scripts          the MCP client check
 ```
 
 The ledger keeps one charge per lease month. Payments are split across those months. Past-due unpaid amounts are shaped for a future N4 notice (`src/lib/arrears.ts`): the total owing and each month still unpaid. Reminder email goes through `src/lib/email.ts`, which does not send anything until a provider is plugged in.

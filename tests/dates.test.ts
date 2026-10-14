@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  addDays,
   formatLongDate,
   isIsoDate,
   rangesOverlap,
@@ -19,6 +20,11 @@ describe("calendar dates", () => {
     expect(todayDateOnly(new Date("2026-10-15T02:30:00.000Z"))).toBe(
       "2026-10-14",
     );
+  });
+
+  it("adds calendar days", () => {
+    expect(addDays("2026-10-14", 14)).toBe("2026-10-28");
+    expect(addDays("2026-01-31", 1)).toBe("2026-02-01");
   });
 
   it("rejects impossible dates", () => {

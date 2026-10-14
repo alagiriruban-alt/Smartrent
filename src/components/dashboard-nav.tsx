@@ -7,6 +7,7 @@ const links = [
   { href: "/dashboard", label: "Rent roll" },
   { href: "/dashboard/rent", label: "Rent" },
   { href: "/dashboard/reminders", label: "Reminders" },
+  { href: "/dashboard/settings/agent", label: "Settings" },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -21,6 +22,9 @@ function isActive(pathname: string, href: string) {
       pathname.startsWith("/dashboard/payments") ||
       pathname.includes("/rent")
     );
+  }
+  if (href === "/dashboard/settings/agent") {
+    return pathname.startsWith("/dashboard/settings");
   }
   return pathname.startsWith(href);
 }
