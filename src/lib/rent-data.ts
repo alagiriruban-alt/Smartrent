@@ -3,6 +3,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 
 import { requireUser } from "@/lib/dal";
+import { listTenancyN4Notices } from "@/lib/services/n4";
 import type { ReceiptView } from "@/lib/receipt";
 import {
   getPaymentRecordFor,
@@ -23,6 +24,11 @@ export async function getRentOverview() {
   const user = await requireUser();
   const overview = await getRentOverviewFor(user.id);
   return { user, ...overview };
+}
+
+export async function getTenancyN4Notices(tenancyId: string) {
+  const user = await requireUser();
+  return listTenancyN4Notices(user.id, tenancyId);
 }
 
 export async function getTenancyLedger(tenancyId: string): Promise<TenancyLedger> {

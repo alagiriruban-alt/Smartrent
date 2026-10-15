@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { IncreaseList } from "@/components/increase-list";
+import { N4LateLink } from "@/components/n4-late-link";
 import { secondaryButton, card } from "@/components/styles";
 import { daysLateLabel } from "@/lib/format";
 import { formatCad } from "@/lib/money";
@@ -129,6 +130,9 @@ export default async function DashboardPage() {
                         >
                           {tenant.propertyLabel}
                         </Link>
+                      </p>
+                      <p className="mt-2">
+                        <N4LateLink tenancyId={tenant.tenancyId} notice={tenant.n4} />
                       </p>
                     </div>
                     <div className="text-right">

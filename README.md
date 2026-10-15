@@ -148,6 +148,8 @@ Writes that move money, and the N4 draft, do not save on the first call. The too
 
 `prepare_n4_draft` returns the amounts and dates for an N4. It does not create a PDF and it does not serve a notice.
 
+`prepare_n4_notice` prepares the fuller N4: tenant names, the unit address, landlord contact, the rent-owing table, and a termination date that follows the current Landlord and Tenant Board rules. The first call previews. The second call, with the same arguments and `confirmationToken`, saves a draft. It does not store a PDF and it does not serve the notice. In the app, open the tenant, choose Prepare an N4, review the draft, confirm it, and download the data-sheet PDF. The PDF stays marked DRAFT until you confirm it. It is not the official form. The official N4 is linked on the draft.
+
 Each call is limited (60 per minute by default) and can see only the landlord who created the token.
 
 Example. List who is late:

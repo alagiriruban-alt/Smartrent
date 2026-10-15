@@ -10,7 +10,6 @@ import { ServiceError } from "@/lib/services/errors";
 import { classifyIngest } from "@/lib/services/ingest-decision";
 import { listProperties, listTenants } from "@/lib/services/portfolio";
 import {
-  buildN4Draft,
   getReceiptFor,
   getReminderBoardFor,
   getRentStatus,
@@ -18,8 +17,9 @@ import {
   previewReminderMessage,
   previewRentPayment,
   recordRentPayment,
-  saveN4Draft,
 } from "@/lib/services/rent";
+import { buildN4Draft, previewN4Notice, saveN4Draft, saveN4NoticeDraft } from "@/lib/services/n4";
+import { isN4ServiceMethod, isRentFrequency, type N4ServiceMethod, type RentFrequency } from "@/lib/n4/rules";
 import { parseRentIncreaseForm } from "@/lib/rent-increase/parse";
 import {
   assessRentIncrease,
@@ -58,10 +58,10 @@ type ToolDefinition = {
 const INSTRUCTIONS = [
   "SmartRentBoss shows one landlord's properties, tenants, and rent ledger.",
   "Read tools answer immediately.",
-  "record_payment, prepare_n4_draft, and prepare_rent_increase_notice do not write on the first call. They return confirmationToken. Call the same tool again with that token and the same arguments to commit. The token expires in 15 minutes and works once.",
+  "record_payment, prepare_n4_draft, prepare_n4_notice, and prepare_rent_increase_notice do not write on the first call. They return confirmationToken. Call the same tool again with that token and the same arguments to commit. The token expires in 15 minutes and works once.",
   "ingest_etransfer_email records the payment when the sender, amount, date, and reference match one tenant at high confidence. Otherwise it returns pending_confirmation.",
   "The same e-Transfer reference is never posted twice.",
-  "prepare_n4_draft returns draft data only. It never creates a PDF and it never serves a notice.",
+  "prepare_n4_draft and prepare_n4_notice save a draft only. They never create a PDF file and they never serve a notice.",
   "prepare_rent_increase_notice saves a draft only. It never serves a notice and it never creates a PDF. An N1 draft is refused when that year's Ontario guideline is not verified.",
   "list_upcoming_rent_increases lists leases inside the 120-day Ontario increase window.",
 ].join(" ");
@@ -261,6 +261,44 @@ const tools: ToolDefinition[] = [
       type: "object",
       properties: {
         tenancyId: { type: "string" },
+        confirmationToken: { type: "string" },
+      },
+      required: ["tenancyId"],
+    },
+  },
+  {
+    name: "prepare_n4_notice",
+    description:
+      "Prepare an Ontario N4 non-payment notice from the lease arrears. The first call previews tenant names, the unit address, landlord contact, the rent-owing table, and the termination date, and returns confirmationToken. Call again with the same arguments plus confirmationToken to save a draft. No PDF file is stored and the notice is not served. Omit terminationDate to use the earliest lawful date. givenOn and terminationDate are YYYY-MM-DD.",
+    scope: "WRITE",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        tenancyId: { type: "string" },
+        givenOn: { type: "string", description: "Day the notice will be given, YYYY-MM-DD. Defaults to today." },
+        serviceMethod: {
+          type: "string",
+          enum: ["IN_PERSON", "MAILBOX", "UNDER_DOOR", "FAX", "COURIER", "MAIL", "XPRESSPOST"],
+          description: "How the notice will be given. Mail and Xpresspost add 5 days. Courier adds one business day.",
+        },
+        rentFrequency: {
+          type: "string",
+          enum: ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"],
+        },
+        terminationDate: {
+          type: "string",
+          description: "YYYY-MM-DD. Cannot be earlier than the earliest lawful termination date.",
+        },
+        landlordName: { type: "string" },
+        landlordContact: { type: "string", description: "Phone or email printed on the notice." },
+        tenantNames: { type: "string", description: "Every tenant in possession, separated by commas." },
+        unitAddress: { type: "string" },
         confirmationToken: { type: "string" },
       },
       required: ["tenancyId"],
@@ -722,6 +760,126 @@ async function prepareRentIncreaseTool(
   };
 }
 
+function n4NoticeArguments(args: Record<string, unknown>) {
+  const tenancyId = requiredString(args, "tenancyId", "the lease id");
+  const givenOn = optionalString(args, "givenOn") ?? null;
+  const terminationDate = optionalString(args, "terminationDate") ?? null;
+  const serviceText = optionalString(args, "serviceMethod") ?? null;
+  const frequencyText = optionalString(args, "rentFrequency") ?? null;
+  if (givenOn && !isIsoDate(givenOn)) {
+    throw new ServiceError("invalid", "Enter the date you will give the notice as YYYY-MM-DD.");
+  }
+  if (terminationDate && !isIsoDate(terminationDate)) {
+    throw new ServiceError("invalid", "Enter the termination date as YYYY-MM-DD.");
+  }
+  let serviceMethod: N4ServiceMethod | null = null;
+  if (serviceText) {
+    if (!isN4ServiceMethod(serviceText)) {
+      throw new ServiceError("invalid", "Choose a service method the N4 instructions allow.");
+    }
+    serviceMethod = serviceText;
+  }
+  let rentFrequency: RentFrequency | null = null;
+  if (frequencyText) {
+    if (!isRentFrequency(frequencyText)) {
+      throw new ServiceError("invalid", "Choose daily, weekly, monthly, or yearly rent.");
+    }
+    rentFrequency = frequencyText;
+  }
+  return {
+    tenancyId,
+    givenOn,
+    terminationDate,
+    serviceMethod,
+    rentFrequency,
+    landlordName: optionalString(args, "landlordName") ?? null,
+    landlordContact: optionalString(args, "landlordContact") ?? null,
+    tenantNames: optionalString(args, "tenantNames") ?? null,
+    unitAddress: optionalString(args, "unitAddress") ?? null,
+  };
+}
+
+function n4DraftInput(
+  payload: ReturnType<typeof n4NoticeArguments>,
+): {
+  tenancyId: string;
+  givenOn: string;
+  serviceMethod: N4ServiceMethod;
+  rentFrequency: RentFrequency;
+  terminationDate: string | null;
+  landlordName: string | null;
+  landlordContact: string | null;
+  tenantNames: string | null;
+  unitAddress: string | null;
+} {
+  return {
+    tenancyId: payload.tenancyId,
+    givenOn: payload.givenOn ?? todayDateOnly(),
+    serviceMethod: payload.serviceMethod ?? "IN_PERSON",
+    rentFrequency: payload.rentFrequency ?? "MONTHLY",
+    terminationDate: payload.terminationDate,
+    landlordName: payload.landlordName,
+    landlordContact: payload.landlordContact,
+    tenantNames: payload.tenantNames,
+    unitAddress: payload.unitAddress,
+  };
+}
+
+async function prepareN4NoticeTool(
+  ctx: AgentContext,
+  args: Record<string, unknown>,
+): Promise<ToolOutcome> {
+  const payload = n4NoticeArguments(args);
+  const confirmationToken = optionalString(args, "confirmationToken");
+  const input = n4DraftInput(payload);
+  if (!confirmationToken) {
+    const draft = await previewN4Notice(ctx.ownerId, input);
+    const issued = await issueConfirmation({
+      ownerId: ctx.ownerId,
+      tool: "prepare_n4_notice",
+      payload,
+    });
+    return {
+      result: {
+        status: "confirmation_required",
+        confirmationToken: issued.secret,
+        expiresAt: issued.expiresAt,
+        fileGenerated: false,
+        served: false,
+        draft,
+      },
+      summary: via(`Previewed an N4 notice for ${draft.tenantName}`),
+      auditStatus: "pending",
+    };
+  }
+  await consumeConfirmation({
+    ownerId: ctx.ownerId,
+    secret: confirmationToken,
+    tool: "prepare_n4_notice",
+    payload,
+  });
+  const saved = await saveN4NoticeDraft(
+    ctx.ownerId,
+    input,
+    "Draft prepared via agent. Not served. No form file was created.",
+  );
+  return {
+    result: {
+      status: "draft",
+      noticeId: saved.noticeId,
+      persisted: true,
+      fileGenerated: false,
+      served: false,
+      noticeStatus: "DRAFT",
+      documentCount: 0,
+      tenantName: saved.tenantName,
+      draft: saved.preview,
+    },
+    summary: via(`Saved an N4 notice draft for ${saved.tenantName}`),
+    auditStatus: "ok",
+  };
+}
+
 async function prepareN4Tool(
   ctx: AgentContext,
   args: Record<string, unknown>,
@@ -847,6 +1005,8 @@ async function runTool(ctx: AgentContext, name: string, args: Record<string, unk
     }
     case "prepare_n4_draft":
       return prepareN4Tool(ctx, args);
+    case "prepare_n4_notice":
+      return prepareN4NoticeTool(ctx, args);
     case "list_upcoming_rent_increases": {
       const increases = await listUpcomingRentIncreases(ctx.ownerId);
       return {

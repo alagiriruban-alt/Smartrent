@@ -1,7 +1,7 @@
 // SmartRentBoss data model.
-// Landlords, properties, units, tenants, the rent ledger, and Ontario
-// rent-increase drafts are in use.
-// Expenses, documents, and N4 notice screens are reserved for later modules.
+// Landlords, properties, units, tenants, the rent ledger, Ontario
+// rent-increase drafts, and N4 non-payment notices are in use.
+// Expenses and document storage are reserved for later modules.
 
 generator client {
   provider = "prisma-client-js"
@@ -347,7 +347,8 @@ model RentGuideline {
 }
 
 // Landlord and Tenant Board notices. N4 is the non-payment notice.
-// N1 and N2 are rent increase drafts. Nothing here is served.
+// N1 and N2 are rent increase drafts. An N4 stays a draft until the
+// landlord confirms it, and becomes served only after service is recorded.
 model Notice {
   id               String       @id @default(cuid())
   ownerId          String
@@ -368,6 +369,18 @@ model Notice {
   guidelineBasisPoints Int?
   guidelineSourceUrl   String?
   warningCodes         String[]  @default([])
+  // Day the landlord plans to give the N4, before service is recorded.
+  givenOn          DateTime?        @db.Date
+  confirmedAt      DateTime?
+  rentFrequency    RentFrequency?
+  // Method used to calculate the termination date.
+  n4ServiceMethod  N4ServiceMethod?
+  landlordName     String?
+  landlordContact  String?
+  tenantNames      String?
+  unitAddress      String?
+  // Snapshot of the N4 rent-owing rows. Later payments do not rewrite it.
+  arrearsRows      Json?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
@@ -375,6 +388,23 @@ model Notice {
 
   @@index([ownerId])
   @@index([tenancyId])
+}
+
+enum RentFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum N4ServiceMethod {
+  IN_PERSON
+  MAILBOX
+  UNDER_DOOR
+  FAX
+  COURIER
+  MAIL
+  XPRESSPOST
 }
 
 enum NoticeType {
