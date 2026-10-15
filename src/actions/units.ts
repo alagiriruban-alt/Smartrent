@@ -36,6 +36,8 @@ export async function createUnit(
   const unit = await prisma.unit.create({
     data: { propertyId, ...parsed.data },
   });
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${propertyId}`);
   redirect(`/dashboard/properties/${propertyId}/units/${unit.id}`);
 }
@@ -63,6 +65,8 @@ export async function updateUnit(
   if (updated.count === 0) {
     notFound();
   }
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${propertyId}`);
   redirect(`/dashboard/properties/${propertyId}/units/${unitId}`);
 }
@@ -95,6 +99,8 @@ export async function deleteUnit(
       },
     });
   }
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${propertyId}`);
   redirect(`/dashboard/properties/${propertyId}`);
 }

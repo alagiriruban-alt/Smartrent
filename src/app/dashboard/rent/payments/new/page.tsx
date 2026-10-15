@@ -31,7 +31,10 @@ export default async function NewPaymentPage({
       </p>
       {tenancies.length === 0 ? (
         <p className={`${card} mt-8 p-4 text-muted`}>
-          Add a tenant before recording a payment.
+          <Link href="/dashboard/properties" className="font-semibold text-pine">
+            Add a property
+          </Link>{" "}
+          and a tenant before recording a payment.
         </p>
       ) : (
         <div className={`${card} mt-8 p-4`}>

@@ -37,12 +37,17 @@ export default async function TenancyRentPage({
 
   return (
     <div>
-      <Link
-        href={`/dashboard/properties/${ledger.propertyId}/units/${ledger.unitId}`}
-        className="text-sm font-semibold text-pine"
-      >
-        Back to {ledger.unitLabel}
-      </Link>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <Link
+          href={`/dashboard/properties/${ledger.propertyId}/units/${ledger.unitId}`}
+          className="text-sm font-semibold text-pine"
+        >
+          Back to {ledger.unitLabel}
+        </Link>
+        <Link href="/dashboard" className="text-sm font-semibold text-pine">
+          Rent roll
+        </Link>
+      </div>
       <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-serif text-4xl tracking-tight">{ledger.tenantName}</h1>

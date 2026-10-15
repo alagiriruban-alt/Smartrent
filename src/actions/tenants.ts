@@ -106,6 +106,7 @@ export async function createTenant(
   });
 
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${propertyId}`);
   redirect(`/dashboard/properties/${propertyId}/units/${unitId}`);
 }
@@ -182,6 +183,7 @@ export async function updateTenant(
 
   const propertyId = tenancy.unit.propertyId;
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${propertyId}`);
   redirect(`/dashboard/properties/${propertyId}/units/${tenancy.unitId}`);
 }
@@ -211,6 +213,7 @@ export async function deleteTenant(
     },
   });
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard/properties");
   revalidatePath(`/dashboard/properties/${tenancy.unit.propertyId}`);
   redirect(
     `/dashboard/properties/${tenancy.unit.propertyId}/units/${tenancy.unitId}`,
