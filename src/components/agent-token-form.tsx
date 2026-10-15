@@ -30,7 +30,7 @@ export function AgentTokenForm() {
         <legend className="text-sm font-semibold">What it can do</legend>
         <label className="flex items-center gap-2 text-sm">
           <input type="radio" name="access" value="read" defaultChecked />
-          Read the rent roll, ledger, reminders, and receipts
+          Read the rent roll, ledger, reminders, receipts, and documents
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="radio" name="access" value="write" />

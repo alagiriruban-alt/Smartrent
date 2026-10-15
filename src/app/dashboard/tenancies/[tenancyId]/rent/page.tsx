@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SaveN4CopyForm } from "@/components/save-notice-copy-form";
 import { StatusPill } from "@/components/status-pill";
 import { card, secondaryButton } from "@/components/styles";
 import { formatLongDate } from "@/lib/dates";
@@ -83,6 +84,9 @@ export default async function TenancyRentPage({
         Arrears are the unpaid amounts whose due date has passed. That total
         is what a future N4 non-payment notice would start from.
       </p>
+      {ledger.arrears.totalOwingCents > 0 ? (
+        <SaveN4CopyForm tenancyId={ledger.tenancyId} />
+      ) : null}
 
       <section className="mt-8">
         <h2 className="font-serif text-2xl">Months</h2>

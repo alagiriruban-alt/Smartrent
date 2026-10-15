@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { PrintButton } from "@/components/print-button";
+import { SaveNoticeCopyForm } from "@/components/save-notice-copy-form";
 import { secondaryButton } from "@/components/styles";
 import { getIncreaseNotice } from "@/lib/dal";
 import { formatLongDate } from "@/lib/dates";
@@ -40,6 +41,10 @@ export default async function RentIncreaseNoticePage({
           >
             Download PDF
           </a>
+          <SaveNoticeCopyForm
+            noticeId={noticeId}
+            label={`Save ${document.formCode} PDF in Documents`}
+          />
         </div>
       </div>
 

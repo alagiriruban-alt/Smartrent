@@ -2,8 +2,10 @@ import Link from "next/link";
 
 import { deleteProperty } from "@/actions/properties";
 import { DeleteForm } from "@/components/delete-form";
+import { DocumentSection } from "@/components/document-section";
 import { card, secondaryButton } from "@/components/styles";
 import { getProperty } from "@/lib/dal";
+import { loadDocumentPanel } from "@/lib/services/documents";
 import { formatLongDate, utcToDateOnly } from "@/lib/dates";
 import {
   bedroomLabel,
@@ -35,7 +37,11 @@ export default async function PropertyPage({
   params: Promise<{ propertyId: string }>;
 }) {
   const { propertyId } = await params;
-  const { property, today, summary } = await getProperty(propertyId);
+  const { user, property, today, summary } = await getProperty(propertyId);
+  const documents = await loadDocumentPanel(user.id, {
+    type: "property",
+    propertyId: property.id,
+  });
 
   return (
     <div>
@@ -152,6 +158,13 @@ export default async function PropertyPage({
           })}
         </ul>
       )}
+
+      <DocumentSection
+        documents={documents.documents}
+        targets={documents.targets}
+        storageMode={documents.storageMode}
+        showIndexLink
+      />
 
       <section className="mt-10 border-t border-line pt-6">
         <h2 className="font-serif text-xl">Delete this property</h2>
