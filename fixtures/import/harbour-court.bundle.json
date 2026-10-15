@@ -1,0 +1,112 @@
+{
+  "bundleVersion": 1,
+  "property": {
+    "externalKey": "harbour-court",
+    "name": "Harbour Court",
+    "streetAddress": "400 Harbour Court",
+    "city": "Kingston",
+    "province": "ON",
+    "postalCode": "K7L 1A1",
+    "jurisdiction": "ON",
+    "owners": [
+      { "name": "Avery Chen", "percent": "50" },
+      { "name": "Riley Chen", "percent": "50" }
+    ]
+  },
+  "tenancies": [
+    {
+      "externalKey": "noah",
+      "tenant": "Noah Singh",
+      "unit": "1",
+      "leaseStart": "2025-07-01",
+      "leaseEnd": "2026-06-30",
+      "monthlyRent": "2100.00",
+      "rentDueDay": 1,
+      "deposit": "2100.00"
+    }
+  ],
+  "ledger": [
+    {
+      "externalKey": "pay-water",
+      "tenant": "Noah Singh",
+      "date": "2025-07-03",
+      "amount": "$2,779.31",
+      "method": "E_TRANSFER",
+      "referenceType": "INTERAC",
+      "reference": "CAHARBOUR01",
+      "memo": "July rent and water",
+      "allocations": [
+        { "kind": "RENT", "period": "2025-07", "amount": "2100.00" },
+        { "kind": "WATER", "period": "2025-07", "amount": "679.31", "description": "Water" }
+      ]
+    },
+    {
+      "externalKey": "pay-quarter",
+      "tenant": "Noah Singh",
+      "date": "2025-10-02",
+      "amount": "6300.00",
+      "method": "CHEQUE",
+      "referenceType": "CHEQUE",
+      "reference": "4410",
+      "periodText": "August + September + October 2025"
+    },
+    {
+      "externalKey": "pay-part",
+      "tenant": "Noah Singh",
+      "date": "2026-01-05",
+      "amount": "1050.00",
+      "method": "E_TRANSFER",
+      "referenceType": "INTERAC",
+      "reference": "CAHARBOUR02",
+      "periodText": "January 2026 (Part 1)"
+    },
+    {
+      "externalKey": "pay-deposit",
+      "tenant": "Noah Singh",
+      "date": "2025-06-15",
+      "amount": "$2,100.00",
+      "method": "E_TRANSFER",
+      "referenceType": "INTERAC",
+      "reference": "CAHARBOUR00",
+      "periodText": "Last Month's Rent Deposit"
+    },
+    {
+      "externalKey": "pay-ambiguous",
+      "tenant": "Noah Singh",
+      "date": "2025-11-01",
+      "amount": "100.00",
+      "method": "CASH",
+      "periodText": "Summer rent"
+    }
+  ],
+  "expenses": [
+    {
+      "externalKey": "exp-faucet",
+      "date": "2025-08-12",
+      "vendor": "Harbour Plumbing",
+      "invoiceNumber": "HP-1044",
+      "description": "Kitchen faucet cartridge",
+      "category": "REPAIRS_MAINTENANCE",
+      "subtotal": "100.00",
+      "hst": "13.00",
+      "total": "113.00",
+      "receiptDocumentId": "doc_harbour_faucet"
+    }
+  ],
+  "sourceTotals": {
+    "periods": {
+      "2025-07": "2100.00",
+      "2025-08": "2100.00",
+      "2025-09": "2100.00",
+      "2025-10": "2100.00",
+      "2026-01": "1050.00"
+    },
+    "years": {
+      "2025": "8400.00",
+      "2026": "1050.00"
+    },
+    "expenses": {
+      "2025": "113.00"
+    }
+  }
+}

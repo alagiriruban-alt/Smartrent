@@ -27,6 +27,7 @@ import {
   saveRentIncreaseDraft,
 } from "@/lib/services/rent-increase";
 import { parsePayment, type PaymentInput } from "@/lib/validators";
+import { recordToolDefinitions, runRecordTool } from "@/lib/mcp/record-tools";
 
 export type AgentContext = {
   ownerId: string;
@@ -64,6 +65,9 @@ const INSTRUCTIONS = [
   "prepare_n4_draft and prepare_n4_notice save a draft only. They never create a PDF file and they never serve a notice.",
   "prepare_rent_increase_notice saves a draft only. It never serves a notice and it never creates a PDF. An N1 draft is refused when that year's Ontario guideline is not verified.",
   "list_upcoming_rent_increases lists leases inside the 120-day Ontario increase window.",
+  "allocate_payment, upsert_charge, record_credit, record_expense, upsert_legal_case, stage_import, review_import_row, and commit_import preview first and return confirmationToken. Call the same tool again with that token to commit. Every one of those calls is audited as via agent.",
+  "Quebec properties are record-only. Ontario N1, N2, and N4 notices are refused for them.",
+  "A payment can be split across rent periods and non-rent charges. Interac references and cheque numbers are unique for the landlord. Without a reference, the same payer, date, and amount is not posted twice.",
 ].join(" ");
 
 export function mcpInstructions(): string {
@@ -342,6 +346,7 @@ const tools: ToolDefinition[] = [
       required: ["tenancyId", "effectiveOn", "newRent"],
     },
   },
+  ...recordToolDefinitions,
 ];
 
 export function toolsFor(scopes: AgentTokenScope[]) {
@@ -1019,8 +1024,13 @@ async function runTool(ctx: AgentContext, name: string, args: Record<string, unk
     }
     case "prepare_rent_increase_notice":
       return prepareRentIncreaseTool(ctx, args);
-    default:
+    default: {
+      const recorded = await runRecordTool(ctx, name, args);
+      if (recorded) {
+        return recorded;
+      }
       throw new ServiceError("invalid", `Unknown tool ${name}.`);
+    }
   }
 }
 

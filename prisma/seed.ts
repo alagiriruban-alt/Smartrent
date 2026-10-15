@@ -1,6 +1,6 @@
 import { PrismaClient, type PaymentMethod } from "@prisma/client";
 
-import { etransferReferenceKey } from "../src/lib/agent/reference";
+import { paymentDedupeKey } from "../src/lib/payments/identity";
 import { addCalendarMonths, addDays, dateOnlyToUtc, todayDateOnly, utcToDateOnly } from "../src/lib/dates";
 import {
   ONTARIO_GUIDELINE_SOURCE_URL,
@@ -32,6 +32,7 @@ async function main() {
   await ensurePayments(user.id);
   await ensureOntarioGuidelines();
   await ensureRentIncreaseDemo(user.id);
+  await ensureBooks(user.id);
 
   console.log("Sample landlord is ready.");
   console.log(`Email:    ${demoEmail}`);
@@ -266,10 +267,13 @@ async function seedPaidUp(
         paidOn: charge.dueOn,
         method: cheque ? "CHEQUE" : "E_TRANSFER",
         referenceNumber: cheque ? "1001" : `CAJP${period}`,
-        referenceKey: etransferReferenceKey(
-          cheque ? "CHEQUE" : "E_TRANSFER",
-          cheque ? "1001" : `CAJP${period}`,
-        ),
+        ...paymentDedupeKey({
+          method: cheque ? "CHEQUE" : "E_TRANSFER",
+          referenceNumber: cheque ? "1001" : `CAJP${period}`,
+          tenancyId,
+          paidOn: utcToDateOnly(charge.dueOn),
+          amountCents: charge.amountCents,
+        }),
         note: "Rent",
         allocations: {
           create: {
@@ -331,10 +335,201 @@ async function seedBehind(
         paidOn: charge.dueOn,
         method,
         referenceNumber,
-        referenceKey: etransferReferenceKey(method, referenceNumber),
+        ...paymentDedupeKey({
+          method,
+          referenceNumber,
+          tenancyId,
+          paidOn: utcToDateOnly(charge.dueOn),
+          amountCents: line.payCents,
+        }),
         note,
         allocations: {
           create: { chargeId: charge.id, amountCents: line.payCents },
+        },
+      },
+    });
+  }
+}
+
+async function ensureBooks(ownerId: string) {
+  const today = todayDateOnly();
+  const property = await prisma.property.findFirst({
+    where: { ownerId, name: "King Street duplex" },
+    include: {
+      owners: true,
+      expenses: true,
+      units: { include: { tenancies: { include: { tenant: true } } } },
+    },
+  });
+  if (!property) {
+    return;
+  }
+  if (property.owners.length === 0) {
+    await prisma.propertyOwner.createMany({
+      data: [
+        { ownerId, propertyId: property.id, name: "Avery Chen", shareBps: 5000 },
+        { ownerId, propertyId: property.id, name: "Riley Chen", shareBps: 5000 },
+      ],
+    });
+  }
+  if (!property.expenses.some((expense) => expense.invoiceNumber === "HP-2044")) {
+    await prisma.expense.create({
+      data: {
+        ownerId,
+        propertyId: property.id,
+        incurredOn: dateOnlyToUtc("2026-08-12"),
+        vendor: "Harbour Plumbing",
+        invoiceNumber: "HP-2044",
+        description: "Kitchen faucet cartridge",
+        category: "REPAIRS_MAINTENANCE",
+        subtotalCents: 10000,
+        hstCents: 1300,
+        amountCents: 11300,
+        receiptDocumentId: "doc_demo_faucet",
+      },
+    });
+  }
+  const jordan = property.units
+    .flatMap((unit) => unit.tenancies)
+    .find((tenancy) => tenancy.tenant.lastName === "Patel");
+  const sam = property.units
+    .flatMap((unit) => unit.tenancies)
+    .find((tenancy) => tenancy.tenant.lastName === "Okonkwo");
+  if (jordan && jordan.depositHeldCents === 0) {
+    await prisma.tenancy.update({
+      where: { id: jordan.id },
+      data: { depositHeldCents: jordan.monthlyRentCents },
+    });
+  }
+  if (jordan) {
+    const history = await prisma.rentChange.findFirst({ where: { tenancyId: jordan.id } });
+    if (!history && jordan.lastIncreaseOn) {
+      await prisma.rentChange.create({
+        data: {
+          ownerId,
+          tenancyId: jordan.id,
+          effectiveOn: jordan.lastIncreaseOn,
+          previousCents: Math.max(jordan.monthlyRentCents - (jordan.lastIncreaseCents ?? 0), 0),
+          amountCents: jordan.monthlyRentCents,
+          reason: "Recorded from the lease rent history",
+        },
+      });
+    }
+    const credit = await prisma.rentCredit.findFirst({
+      where: {
+        tenancyId: jordan.id,
+        reason: "Repair offset for a faucet cartridge the tenant bought",
+      },
+    });
+    if (!credit) {
+      await prisma.rentCredit.create({
+        data: {
+          ownerId,
+          tenancyId: jordan.id,
+          amountCents: 10000,
+          kind: "OFFSET",
+          reason: "Repair offset for a faucet cartridge the tenant bought",
+          effectiveOn: dateOnlyToUtc(today),
+          documentId: "doc_demo_offset",
+        },
+      });
+    }
+  }
+  if (sam) {
+    const water = await prisma.ledgerCharge.findFirst({
+      where: { tenancyId: sam.id, kind: "WATER" },
+    });
+    if (!water) {
+      const due = addCalendarMonths(`${today.slice(0, 7)}-01`, -1);
+      await prisma.ledgerCharge.create({
+        data: {
+          ownerId,
+          tenancyId: sam.id,
+          kind: "WATER",
+          period: due.slice(0, 7),
+          description: "Water",
+          amountCents: 6793,
+          dueOn: dateOnlyToUtc(due),
+        },
+      });
+    }
+    const filing = await prisma.ledgerCharge.findFirst({
+      where: { tenancyId: sam.id, kind: "LTB_FILING" },
+    });
+    if (!filing) {
+      await prisma.ledgerCharge.create({
+        data: {
+          ownerId,
+          tenancyId: sam.id,
+          kind: "LTB_FILING",
+          description: "LTB filing fee",
+          amountCents: 18600,
+          dueOn: dateOnlyToUtc(addDays(today, -10)),
+        },
+      });
+    }
+    const hearingOn = addDays(today, 21);
+    const existingCase = await prisma.legalCase.findFirst({
+      where: { ownerId, ltbFileNumber: "LTB-26-00991" },
+    });
+    if (!existingCase) {
+      await prisma.legalCase.create({
+        data: {
+          ownerId,
+          tenantId: sam.tenantId,
+          tenancyId: sam.id,
+          type: "N4",
+          servedOn: dateOnlyToUtc(addDays(today, -5)),
+          filedOn: dateOnlyToUtc(addDays(today, -2)),
+          ltbFileNumber: "LTB-26-00991",
+          filingFeeCents: 18600,
+          hearingOn: dateOnlyToUtc(hearingOn),
+          status: "HEARING_SET",
+          notes: "Fictional sample. Not a real Landlord and Tenant Board file.",
+        },
+      });
+    } else {
+      await prisma.legalCase.update({
+        where: { id: existingCase.id },
+        data: { hearingOn: dateOnlyToUtc(hearingOn), status: "HEARING_SET" },
+      });
+    }
+  }
+  const quebec = await prisma.property.findFirst({
+    where: { ownerId, name: "Plateau walk-up" },
+  });
+  if (!quebec) {
+    const camille = await prisma.tenant.create({
+      data: {
+        ownerId,
+        firstName: "Camille",
+        lastName: "Bergeron",
+        email: "camille@example.com",
+      },
+    });
+    await prisma.property.create({
+      data: {
+        ownerId,
+        name: "Plateau walk-up",
+        streetAddress: "18 Rue Exemple",
+        city: "Montreal",
+        province: "QC",
+        jurisdiction: "QC",
+        postalCode: "H2X 1Y4",
+        units: {
+          create: {
+            label: "2",
+            bedrooms: 1,
+            tenancies: {
+              create: {
+                tenantId: camille.id,
+                leaseStart: dateOnlyToUtc("2026-03-01"),
+                moveInOn: dateOnlyToUtc("2026-03-01"),
+                monthlyRentCents: 120000,
+                rentDueDay: 1,
+              },
+            },
+          },
         },
       },
     });

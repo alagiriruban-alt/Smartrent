@@ -14,14 +14,15 @@ import {
   propertyTitle,
   tenantName,
 } from "@/lib/format";
+import { ontarioNoticesEnabled, QUEBEC_RECORD_ONLY } from "@/lib/jurisdiction";
 import { formatCad } from "@/lib/money";
 import { tenancyPhase, type TenancyPhase } from "@/lib/portfolio";
 
 function eligibleLabel(
   tenancy: { moveInOn: Date; lastIncreaseOn: Date | null },
-  province: string,
+  property: { province: string; jurisdiction: string },
 ): string {
-  const rules = rulesForProvince(province);
+  const rules = ontarioNoticesEnabled(property) ? rulesForProvince(property.province) : null;
   if (!rules) {
     return "Rules for this province are not available yet.";
   }
@@ -132,12 +133,14 @@ export default async function UnitPage({
                     >
                       Rent ledger
                     </Link>
-                    <Link
-                      href={`/dashboard/tenancies/${tenancy.id}/rent-increase`}
-                      className={secondaryButton}
-                    >
-                      Rent increase
-                    </Link>
+                    {ontarioNoticesEnabled(property) ? (
+                      <Link
+                        href={`/dashboard/tenancies/${tenancy.id}/rent-increase`}
+                        className={secondaryButton}
+                      >
+                        Rent increase
+                      </Link>
+                    ) : null}
                     <Link
                       href={`/dashboard/tenancies/${tenancy.id}/edit`}
                       className={secondaryButton}
@@ -163,7 +166,11 @@ export default async function UnitPage({
                   </div>
                   <div>
                     <dt className="text-muted">Next eligible increase</dt>
-                    <dd>{eligibleLabel(tenancy, property.province)}</dd>
+                    <dd>
+                      {ontarioNoticesEnabled(property)
+                        ? eligibleLabel(tenancy, property)
+                        : QUEBEC_RECORD_ONLY}
+                    </dd>
                   </div>
                   <div>
                     <dt className="text-muted">Lease</dt>

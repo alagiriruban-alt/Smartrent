@@ -21,6 +21,7 @@ import {
   rulesForProvince,
   type IncreaseAlert,
 } from "@/lib/rent-increase/rules";
+import { ontarioNoticesEnabled } from "@/lib/jurisdiction";
 import { ServiceError } from "@/lib/services/errors";
 
 const tenancyInclude = {
@@ -67,6 +68,7 @@ type LoadedTenancy = {
       streetAddress: string;
       city: string;
       province: string;
+      jurisdiction: "ON" | "QC";
       postalCode: string;
       ownerId: string;
       owner: { name: string };
@@ -76,7 +78,9 @@ type LoadedTenancy = {
 
 function toBoardRow(tenancy: LoadedTenancy, today: string): IncreaseBoardRow {
   const province = tenancy.unit.property.province;
-  const rules = rulesForProvince(province);
+  const rules = ontarioNoticesEnabled(tenancy.unit.property)
+    ? rulesForProvince(province)
+    : null;
   const moveInOn = utcToDateOnly(tenancy.moveInOn);
   const lastIncreaseOn = tenancy.lastIncreaseOn
     ? utcToDateOnly(tenancy.lastIncreaseOn)
@@ -206,6 +210,12 @@ export async function assessRentIncrease(
       message: "Rent increase drafts are for active leases.",
     };
   }
+  if (!ontarioNoticesEnabled(tenancy.unit.property)) {
+    return {
+      status: "blocked",
+      message: "Quebec properties are record-only. Ontario N1 and N2 notices are turned off.",
+    };
+  }
   const draft = await assessLoaded(tenancy, input, preparedOn);
   if (draft.status !== "ready") {
     return draft;
@@ -225,6 +235,12 @@ export async function saveRentIncreaseDraft(
   if (tenancy.status !== "ACTIVE") {
     throw new ServiceError("invalid", "Rent increase drafts are for active leases.");
   }
+  if (!ontarioNoticesEnabled(tenancy.unit.property)) {
+    throw new ServiceError(
+      "invalid",
+      "Quebec properties are record-only. Ontario N1 and N2 notices are turned off.",
+    );
+  }
   const result = await assessLoaded(tenancy, input, preparedOn);
   if (result.status !== "ready") {
     throw new ServiceError("invalid", result.message);
@@ -242,6 +258,17 @@ export async function saveRentIncreaseDraft(
       guidelineBasisPoints: result.guidelineBasisPoints,
       guidelineSourceUrl: result.guidelineSourceUrl,
       warningCodes: result.warnings.map((warning) => warning.code),
+    },
+  });
+  await prisma.rentChange.create({
+    data: {
+      ownerId,
+      tenancyId: tenancy.id,
+      effectiveOn: dateOnlyToUtc(result.effectiveOn),
+      previousCents: result.currentRentCents,
+      amountCents: result.newRentCents,
+      noticeId: notice.id,
+      reason: `${result.form.code} draft`,
     },
   });
   return {

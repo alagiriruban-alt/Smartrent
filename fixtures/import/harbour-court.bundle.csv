@@ -1,0 +1,12 @@
+section,key,amount,externalKey,tenant,date,method,referenceType,reference,periodText,name,percent,streetAddress,city,province,postalCode,jurisdiction,unit,leaseStart,leaseEnd,monthlyRent,rentDueDay,deposit,vendor,invoiceNumber,description,category,subtotal,hst,total,receiptDocumentId
+property,,,"harbour-court",,,,,"",,"Harbour Court",,400 Harbour Court,Kingston,ON,K7L 1A1,ON,,,,,,,,,,,,
+owner,,,"avery",,,,,"",,"Avery Chen",50,,,,,,,,,,,,,,,,,,
+owner,,,"riley",,,,,"",,"Riley Chen",50,,,,,,,,,,,,,,,,,,
+tenancy,,,"noah",Noah Singh,,,,"",,,,,,,,1,2025-07-01,2026-06-30,2100.00,1,2100.00,,,,,,,
+ledger,,6300.00,pay-quarter,Noah Singh,2025-10-02,CHEQUE,CHEQUE,4410,August + September + October 2025,,,,,,,,,,,,,,,,,,,,
+period_total,2025-08,2100.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+period_total,2025-09,2100.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+period_total,2025-10,2100.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+year_total,2025,6300.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+expense,,,"exp-faucet",,2025-08-12,,,,"",,,,,,,,,,,,,,Harbour Plumbing,HP-1044,Kitchen faucet cartridge,REPAIRS_MAINTENANCE,100.00,13.00,113.00,doc_harbour_faucet
+expense_total,2025,113.00,,,,,,,,,,,,,,,,,,,,,,,,,,,,

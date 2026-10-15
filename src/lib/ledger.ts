@@ -142,6 +142,53 @@ export function summarizeLedger(
   };
 }
 
+/**
+ * Apply rent credits and an applied deposit to rent charges.
+ * A reduction with a period hits that YYYY-MM. A reduction without a
+ * period fills the oldest open rent charge. Nothing here reads free text.
+ */
+export function applyRentReductions<
+  T extends {
+    id: string;
+    periodStart: string;
+    dueOn: string;
+    amountCents: number;
+    paidCents: number;
+  },
+>(
+  charges: T[],
+  reductions: { period: string | null; amountCents: number }[],
+): T[] {
+  const next = charges.map((charge) => ({ ...charge }));
+  const byPeriod = new Map<string, T[]>();
+  for (const charge of next) {
+    const period = charge.periodStart.slice(0, 7);
+    const list = byPeriod.get(period) ?? [];
+    list.push(charge);
+    byPeriod.set(period, list);
+  }
+  const ordered = [...next].sort(
+    (a, b) => a.dueOn.localeCompare(b.dueOn) || a.id.localeCompare(b.id),
+  );
+  for (const reduction of reductions) {
+    let left = reduction.amountCents;
+    const targets = reduction.period ? (byPeriod.get(reduction.period) ?? []) : ordered;
+    for (const charge of targets) {
+      if (left <= 0) {
+        break;
+      }
+      const room = charge.amountCents - charge.paidCents;
+      if (room <= 0) {
+        continue;
+      }
+      const applied = Math.min(room, left);
+      charge.paidCents += applied;
+      left -= applied;
+    }
+  }
+  return next;
+}
+
 export function summarizeMonth(charges: StandingCharge[], month: string) {
   const rows = charges.filter((charge) => charge.periodStart === month);
   const expectedCents = rows.reduce((sum, charge) => sum + charge.amountCents, 0);

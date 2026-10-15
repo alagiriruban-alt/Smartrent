@@ -35,6 +35,8 @@ export async function ensureTenancyCharges(
   await db.rentCharge.createMany({
     data: periods.map((periodStart) => ({
       tenancyId: tenancy.id,
+      period: periodStart.slice(0, 7),
+      portion: "",
       periodStart: dateOnlyToUtc(periodStart),
       dueOn: dateOnlyToUtc(dueOnForPeriod(periodStart, tenancy.rentDueDay)),
       amountCents: tenancy.monthlyRentCents,
@@ -45,7 +47,7 @@ export async function ensureTenancyCharges(
 
 export async function applyTenancyCredits(db: LedgerDb, tenancyId: string) {
   const payments = await db.rentPayment.findMany({
-    where: { tenancyId },
+    where: { tenancyId, allocationMode: "AUTO" },
     include: { allocations: true },
     orderBy: [{ paidOn: "asc" }, { createdAt: "asc" }],
   });

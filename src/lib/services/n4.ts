@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/agent/audit";
 import { dateOnlyToUtc, isIsoDate, todayDateOnly, utcToDateOnly } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { formatAddress, tenantName } from "@/lib/format";
+import { ontarioNoticesEnabled } from "@/lib/jurisdiction";
 import { n4DocumentLines, type N4Sheet } from "@/lib/n4/document";
 import {
   earliestTerminationDate,
@@ -141,10 +142,10 @@ export async function previewN4Notice(
   if (tenancy.status !== "ACTIVE") {
     throw new ServiceError("invalid", "An N4 is for a tenant who is still in the unit.");
   }
-  if (tenancy.unit.property.province !== "ON") {
+  if (!ontarioNoticesEnabled(tenancy.unit.property)) {
     throw new ServiceError(
       "invalid",
-      "N4 is an Ontario Landlord and Tenant Board form. This lease is not in Ontario.",
+      "N4 is an Ontario notice. Quebec properties stay on the ledger only.",
     );
   }
   const table = n4RentTableFromCharges({
@@ -544,6 +545,12 @@ export async function buildN4Draft(
   const ledger = await getTenancyLedgerFor(ownerId, tenancyId);
   if (!ledger) {
     throw new ServiceError("not_found", "That lease was not found.");
+  }
+  if (!ledger.ontarioNotices) {
+    throw new ServiceError(
+      "invalid",
+      "N4 is an Ontario notice. Quebec properties stay on the ledger only.",
+    );
   }
   const landlord = await prisma.user.findUnique({
     where: { id: ownerId },

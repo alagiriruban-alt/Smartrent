@@ -1,7 +1,8 @@
 // SmartRentBoss data model.
-// Landlords, properties, units, tenants, the rent ledger, Ontario
-// rent-increase drafts, and N4 non-payment notices are in use.
-// Expenses and document storage are reserved for later modules.
+// Landlords, properties, units, tenants, the rent ledger, and Ontario
+// notices are in use. Money is integer cents. A rent period is an
+// explicit YYYY-MM value, never a phrase parsed at read time.
+// Document file storage is reserved for a later module.
 
 generator client {
   provider = "prisma-client-js"
@@ -31,6 +32,13 @@ model User {
   agentTokens          AgentAccessToken[]
   agentConfirmations   AgentConfirmation[]
   agentAuditLogs       AgentAuditLog[]
+  ledgerCharges        LedgerCharge[]
+  rentCredits          RentCredit[]
+  legalCases           LegalCase[]
+  propertyOwners       PropertyOwner[]
+  importBatches        ImportBatch[]
+  ledgerOverrides      LedgerOverride[]
+  rentChanges          RentChange[]
 }
 
 model Property {
@@ -41,13 +49,17 @@ model Property {
   streetAddress String
   city          String
   province      String   @default("ON")
+  // ON uses Ontario notices. QC is a record-only ledger.
+  jurisdiction  Jurisdiction @default(ON)
   postalCode    String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  units     Unit[]
-  expenses  Expense[]
-  documents Document[]
+  units         Unit[]
+  expenses      Expense[]
+  documents     Document[]
+  owners        PropertyOwner[]
+  importBatches ImportBatch[]
 
   @@index([ownerId])
 }
@@ -84,7 +96,8 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenancies Tenancy[]
+  tenancies  Tenancy[]
+  legalCases LegalCase[]
 
   @@index([ownerId])
 }
@@ -102,14 +115,23 @@ model Tenancy {
   moveInOn          DateTime       @db.Date
   lastIncreaseOn    DateTime?      @db.Date
   lastIncreaseCents Int?
+  // Last month's rent held for this lease, in cents. Applied deposit
+  // is counted against depositAppliedPeriod and is not inferred.
+  depositHeldCents     Int            @default(0)
+  depositAppliedOn     DateTime?      @db.Date
+  depositAppliedPeriod String?
   status            TenancyStatus  @default(ACTIVE)
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
-  charges   RentCharge[]
-  payments  RentPayment[]
-  notices   Notice[]
-  documents Document[]
+  charges       RentCharge[]
+  payments      RentPayment[]
+  notices       Notice[]
+  documents     Document[]
+  ledgerCharges LedgerCharge[]
+  rentCredits   RentCredit[]
+  legalCases    LegalCase[]
+  rentChanges   RentChange[]
 
   @@index([unitId])
   @@index([tenantId])
@@ -128,13 +150,17 @@ model RentCharge {
   tenancyId   String
   tenancy     Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   periodStart DateTime @db.Date
+  // Explicit rental period, YYYY-MM. portion is empty for a full month
+  // and "1", "2", ... for a partial period such as "January 2026 (Part 1)".
+  period      String
+  portion     String   @default("")
   dueOn       DateTime @db.Date
   amountCents Int
   createdAt   DateTime @default(now())
 
   allocations PaymentAllocation[]
 
-  @@unique([tenancyId, periodStart])
+  @@unique([tenancyId, period, portion])
   @@index([tenancyId])
 }
 
@@ -150,30 +176,41 @@ model RentPayment {
   paidOn          DateTime      @db.Date
   method          PaymentMethod
   referenceNumber String?
+  referenceType   PaymentReferenceType @default(NONE)
   // Set only for an e-Transfer that has a reference. The unique key
   // stops the same transfer from being posted twice. Other methods
   // leave this empty, and Postgres allows more than one empty value.
   referenceKey    String?
+  // Always set. Interac and cheque numbers are unique per landlord.
+  // With no reference, the key is the payer, date, and amount.
+  dedupeKey       String
+  allocationMode  AllocationMode       @default(AUTO)
+  importKey       String?
   note            String?
   createdAt       DateTime      @default(now())
 
   allocations PaymentAllocation[]
 
   @@unique([ownerId, referenceKey])
+  @@unique([ownerId, dedupeKey])
+  @@unique([ownerId, importKey])
   @@index([ownerId])
   @@index([tenancyId])
 }
 
 model PaymentAllocation {
-  id          String      @id @default(cuid())
-  paymentId   String
-  payment     RentPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  chargeId    String
-  charge      RentCharge  @relation(fields: [chargeId], references: [id], onDelete: Cascade)
-  amountCents Int
+  id             String        @id @default(cuid())
+  paymentId      String
+  payment        RentPayment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  chargeId       String?
+  charge         RentCharge?   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  ledgerChargeId String?
+  ledgerCharge   LedgerCharge? @relation(fields: [ledgerChargeId], references: [id], onDelete: Cascade)
+  amountCents    Int
 
   @@index([paymentId])
   @@index([chargeId])
+  @@index([ledgerChargeId])
 }
 
 // offsetDays is relative to the due date: -3 is three days before,
@@ -256,7 +293,7 @@ model AgentAuditLog {
 }
 
 // Operating expenses, grouped the way CRA form T776 lists them.
-// Not shown in the app yet.
+// amountCents is the total. subtotalCents plus hstCents equals that total.
 model Expense {
   id          String       @id @default(cuid())
   ownerId     String
@@ -266,15 +303,21 @@ model Expense {
   unitId      String?
   unit        Unit?        @relation(fields: [unitId], references: [id], onDelete: SetNull)
   incurredOn  DateTime     @db.Date
-  amountCents Int
-  category    T776Category
-  vendor      String?
-  description String
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  amountCents       Int
+  subtotalCents     Int          @default(0)
+  hstCents          Int          @default(0)
+  category          T776Category
+  vendor            String?
+  invoiceNumber     String?
+  description       String
+  receiptDocumentId String?
+  importKey         String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   documents Document[]
 
+  @@unique([ownerId, importKey])
   @@index([ownerId])
   @@index([propertyId])
 }
@@ -384,7 +427,8 @@ model Notice {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  documents Document[]
+  documents  Document[]
+  rentChange RentChange?
 
   @@index([ownerId])
   @@index([tenancyId])
@@ -417,4 +461,236 @@ enum NoticeStatus {
   DRAFT
   SERVED
   VOID
+}
+
+enum Jurisdiction {
+  ON
+  QC
+}
+
+enum PaymentReferenceType {
+  INTERAC
+  CHEQUE
+  OTHER
+  NONE
+}
+
+enum AllocationMode {
+  AUTO
+  EXPLICIT
+}
+
+enum LedgerChargeKind {
+  WATER
+  UTILITIES
+  FEE
+  LTB_FILING
+  OTHER
+}
+
+enum CreditKind {
+  IN_KIND
+  OFFSET
+}
+
+enum LegalCaseType {
+  N4
+  L1
+  L2
+  N12
+  OTHER
+}
+
+enum LegalCaseStatus {
+  OPEN
+  SERVED
+  FILED
+  HEARING_SET
+  DECIDED
+  WITHDRAWN
+  CLOSED
+}
+
+enum ImportBatchStatus {
+  STAGED
+  COMMITTED
+}
+
+enum ImportRowStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  COMMITTED
+}
+
+enum ImportRowKind {
+  HEADER
+  TENANCY
+  LEDGER
+  EXPENSE
+}
+
+// A non-rent charge with its own balance. Rent stays on RentCharge.
+model LedgerCharge {
+  id           String           @id @default(cuid())
+  ownerId      String
+  owner        User             @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenancyId    String
+  tenancy      Tenancy          @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  kind         LedgerChargeKind
+  period       String?
+  description  String
+  amountCents  Int
+  dueOn        DateTime         @db.Date
+  importKey    String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  allocations PaymentAllocation[]
+
+  @@unique([ownerId, importKey])
+  @@index([ownerId])
+  @@index([tenancyId])
+}
+
+// In-kind rent or an offset, such as a tenant-bought appliance or a repair credit.
+model RentCredit {
+  id           String     @id @default(cuid())
+  ownerId      String
+  owner        User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenancyId    String
+  tenancy      Tenancy    @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  amountCents  Int
+  kind         CreditKind
+  reason       String
+  documentId   String?
+  period       String?
+  effectiveOn  DateTime   @db.Date
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([ownerId])
+  @@index([tenancyId])
+}
+
+// One rent amount and the date it took effect, optionally tied to an N1 or N2 draft.
+model RentChange {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenancyId      String
+  tenancy        Tenancy  @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  effectiveOn    DateTime @db.Date
+  previousCents  Int
+  amountCents    Int
+  noticeId       String?  @unique
+  notice         Notice?  @relation(fields: [noticeId], references: [id], onDelete: SetNull)
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([tenancyId])
+}
+
+model LegalCase {
+  id              String          @id @default(cuid())
+  ownerId         String
+  owner           User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tenantId        String
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenancyId       String
+  tenancy         Tenancy         @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  type            LegalCaseType
+  typeDetail      String?
+  servedOn        DateTime?       @db.Date
+  filedOn         DateTime?       @db.Date
+  ltbFileNumber   String?
+  filingFeeCents  Int?
+  hearingOn       DateTime?       @db.Date
+  status          LegalCaseStatus @default(OPEN)
+  outcome         String?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([ownerId, ltbFileNumber])
+  @@index([ownerId])
+  @@index([tenancyId])
+  @@index([tenantId])
+  @@index([hearingOn])
+}
+
+// Co-owners. shareBps is basis points: 5000 is 50%.
+model PropertyOwner {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name       String
+  shareBps   Int
+  createdAt  DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([propertyId])
+}
+
+model ImportBatch {
+  id             String            @id @default(cuid())
+  ownerId        String
+  owner          User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  propertyId     String?
+  property       Property?         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  sourceName     String
+  sourceHash     String
+  status         ImportBatchStatus @default(STAGED)
+  reconciliation Json
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  rows ImportRow[]
+
+  @@unique([ownerId, sourceHash])
+  @@index([ownerId])
+  @@index([propertyId])
+}
+
+model ImportRow {
+  id              String          @id @default(cuid())
+  ownerId         String
+  batchId         String
+  batch           ImportBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rowIndex        Int
+  kind            ImportRowKind
+  rawText         String
+  parsed          Json
+  confidence      Int
+  flags           String[]        @default([])
+  needsReview     Boolean         @default(false)
+  status          ImportRowStatus @default(PENDING)
+  idempotencyKey  String
+  periodOverride  String?
+  committedId     String?
+  createdAt       DateTime        @default(now())
+
+  @@unique([batchId, idempotencyKey])
+  @@index([ownerId])
+  @@index([batchId])
+}
+
+// A landlord correction. The stored record is this version.
+// Later agent or import runs do not overwrite the listed fields.
+model LedgerOverride {
+  id         String   @id @default(cuid())
+  ownerId    String
+  owner      User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  entityType String
+  entityId   String
+  fields     String[]
+  reason     String
+  before     Json
+  after      Json
+  createdAt  DateTime @default(now())
+
+  @@index([ownerId, entityType, entityId])
 }

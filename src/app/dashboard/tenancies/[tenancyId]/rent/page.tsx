@@ -1,8 +1,18 @@
 import Link from "next/link";
 
+import { correctCharge } from "@/actions/books";
+import { CorrectionForm } from "@/components/book-forms";
 import { N4LateLink } from "@/components/n4-late-link";
 import { StatusPill } from "@/components/status-pill";
 import { card, secondaryButton } from "@/components/styles";
+import {
+  listLedgerCharges,
+  listLegalCases,
+  listRentChanges,
+  listRentCredits,
+} from "@/lib/books-records";
+import { requireUser } from "@/lib/dal";
+import { QUEBEC_RECORD_ONLY } from "@/lib/jurisdiction";
 import { formatLongDate } from "@/lib/dates";
 import {
   balancePhrase,
@@ -32,6 +42,13 @@ export default async function TenancyRentPage({
 }) {
   const { tenancyId } = await params;
   const ledger = await getTenancyLedger(tenancyId);
+  const user = await requireUser();
+  const [charges, credits, changes, legal] = await Promise.all([
+    listLedgerCharges(user.id, tenancyId),
+    listRentCredits(user.id, tenancyId),
+    listRentChanges(user.id, tenancyId),
+    listLegalCases(user.id, tenancyId),
+  ]);
   const notices = await getTenancyN4Notices(tenancyId);
   const latest = notices.find((notice) => notice.status !== "VOID") ?? null;
 
@@ -56,7 +73,7 @@ export default async function TenancyRentPage({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {ledger.arrears.totalOwingCents > 0 ? (
+          {ledger.ontarioNotices && ledger.arrears.totalOwingCents > 0 ? (
             <Link
               href={`/dashboard/tenancies/${ledger.tenancyId}/n4`}
               className={secondaryButton}
@@ -64,6 +81,24 @@ export default async function TenancyRentPage({
               Prepare an N4
             </Link>
           ) : null}
+          <Link
+            href={`/dashboard/tenancies/${ledger.tenancyId}/charges/new`}
+            className={secondaryButton}
+          >
+            Add a charge
+          </Link>
+          <Link
+            href={`/dashboard/tenancies/${ledger.tenancyId}/credits/new`}
+            className={secondaryButton}
+          >
+            Add a credit
+          </Link>
+          <Link
+            href={`/dashboard/tenancies/${ledger.tenancyId}/legal/new`}
+            className={secondaryButton}
+          >
+            Add a case
+          </Link>
           <Link
             href={`/dashboard/rent/payments/new?tenancyId=${ledger.tenancyId}`}
             className={secondaryButton}
@@ -94,9 +129,14 @@ export default async function TenancyRentPage({
         </div>
       </dl>
       <p className="mt-3 text-sm text-muted">
-        Arrears are the unpaid amounts whose due date has passed. An N4 starts
-        from that total.
+        Rent arrears are the unpaid rent whose due date has passed.
+        {ledger.ontarioNotices
+          ? " An N4 starts from that rent total and does not include water, fees, or other charges."
+          : ` ${QUEBEC_RECORD_ONLY}`}
       </p>
+      {!ledger.ontarioNotices ? (
+        <p className={`${card} mt-4 p-4 text-sm`}>{QUEBEC_RECORD_ONLY}</p>
+      ) : null}
       {ledger.arrears.totalOwingCents > 0 || notices.length > 0 ? (
         <section className="mt-6">
           <h2 className="font-serif text-2xl">N4 notices</h2>
@@ -218,6 +258,140 @@ export default async function TenancyRentPage({
                     </p>
                   </div>
                 </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="font-serif text-2xl">Lease</h2>
+        <dl className={`${card} mt-4 grid gap-3 p-4 text-sm sm:grid-cols-2`}>
+          <div>
+            <dt className="text-muted">Lease</dt>
+            <dd>
+              {formatLongDate(ledger.leaseStart)}
+              {" – "}
+              {ledger.leaseEnd ? formatLongDate(ledger.leaseEnd) : "month-to-month"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted">Last month&apos;s rent held</dt>
+            <dd>
+              {formatCad(ledger.depositHeldCents)}
+              {ledger.depositAppliedPeriod
+                ? ` · applied to ${ledger.depositAppliedPeriod}`
+                : ledger.depositHeldCents > 0
+                  ? " · still held"
+                  : ""}
+            </dd>
+          </div>
+        </dl>
+        <h3 className="mt-4 font-semibold">Rent changes</h3>
+        {changes.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">No rent changes recorded.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-2">
+            {changes.map((change) => (
+              <li key={change.id} className="text-sm">
+                {formatLongDate(change.effectiveOn)} · {formatCad(change.previousCents)} to{" "}
+                {formatCad(change.amountCents)}
+                {change.noticeType ? ` · ${change.noticeType} ${change.noticeStatus ?? ""}` : ""}
+                {change.reason ? ` · ${change.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="font-serif text-2xl">Other charges</h2>
+        {charges.length === 0 ? (
+          <p className={`${card} mt-4 p-4 text-muted`}>No water, fees, or other charges.</p>
+        ) : (
+          <ul className="mt-4 flex flex-col gap-3">
+            {charges.map((charge) => (
+              <li key={charge.id} className={`${card} p-4`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">
+                      {charge.kind.replaceAll("_", " ")} · {charge.description}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      {charge.period ?? "No period"} · due {formatLongDate(charge.dueOn)}
+                    </p>
+                  </div>
+                  <p className="text-right text-sm">
+                    <span className="font-semibold">{formatCad(charge.owingCents)}</span>
+                    <span className="text-muted"> of {formatCad(charge.amountCents)} owing</span>
+                  </p>
+                </div>
+                <CorrectionForm
+                  action={correctCharge}
+                  tenancyId={ledger.tenancyId}
+                  chargeId={charge.id}
+                  label={charge.description}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="font-serif text-2xl">Rent credits</h2>
+        {credits.length === 0 ? (
+          <p className={`${card} mt-4 p-4 text-muted`}>No credits or offsets.</p>
+        ) : (
+          <ul className="mt-4 flex flex-col gap-3">
+            {credits.map((credit) => (
+              <li key={credit.id} className={`${card} p-4 text-sm`}>
+                <p className="font-semibold">
+                  {formatCad(credit.amountCents)} · {credit.kind === "IN_KIND" ? "In kind" : "Offset"}
+                </p>
+                <p className="mt-1 text-muted">
+                  {formatLongDate(credit.effectiveOn)}
+                  {credit.period ? ` · ${credit.period}` : ""} · {credit.reason}
+                  {credit.documentId ? ` · document ${credit.documentId}` : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <h2 className="font-serif text-2xl">Legal cases</h2>
+        {legal.upcomingHearings.length > 0 ? (
+          <p className="mt-2 text-sm">
+            Upcoming{" "}
+            {legal.upcomingHearings
+              .map((item) => `${item.type} on ${formatLongDate(item.hearingOn ?? "")}`)
+              .join(", ")}
+            .
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-muted">No upcoming hearings.</p>
+        )}
+        {legal.cases.length === 0 ? (
+          <p className={`${card} mt-4 p-4 text-muted`}>No cases on this lease.</p>
+        ) : (
+          <ul className="mt-4 flex flex-col gap-3">
+            {legal.cases.map((item) => (
+              <li key={item.id} className={`${card} p-4 text-sm`}>
+                <p className="font-semibold">
+                  {item.type}
+                  {item.typeDetail ? ` · ${item.typeDetail}` : ""} · {item.status.replaceAll("_", " ")}
+                </p>
+                <p className="mt-1 text-muted">
+                  {item.ltbFileNumber ? `${item.ltbFileNumber} · ` : ""}
+                  {item.servedOn ? `served ${formatLongDate(item.servedOn)} · ` : ""}
+                  {item.filedOn ? `filed ${formatLongDate(item.filedOn)} · ` : ""}
+                  {item.hearingOn ? `hearing ${formatLongDate(item.hearingOn)}` : "no hearing date"}
+                  {item.filingFeeCents !== null ? ` · fee ${formatCad(item.filingFeeCents)}` : ""}
+                </p>
+                {item.outcome ? <p className="mt-1">Outcome: {item.outcome}</p> : null}
+                {item.notes ? <p className="mt-1 text-muted">{item.notes}</p> : null}
               </li>
             ))}
           </ul>

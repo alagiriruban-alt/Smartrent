@@ -131,9 +131,11 @@ export default async function DashboardPage() {
                           {tenant.propertyLabel}
                         </Link>
                       </p>
-                      <p className="mt-2">
-                        <N4LateLink tenancyId={tenant.tenancyId} notice={tenant.n4} />
-                      </p>
+                      {tenant.ontarioNotices ? (
+                        <p className="mt-2">
+                          <N4LateLink tenancyId={tenant.tenancyId} notice={tenant.n4} />
+                        </p>
+                      ) : null}
                     </div>
                     <div className="text-right">
                       <p className="font-serif text-2xl tabular-nums text-danger">
