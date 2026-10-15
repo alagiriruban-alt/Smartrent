@@ -5,6 +5,7 @@ import { confirmN4Action } from "@/actions/n4";
 import { N4ServeForm } from "@/components/n4-serve-form";
 import { N4Sheet } from "@/components/n4-sheet";
 import { PrintButton } from "@/components/print-button";
+import { SaveNoticeCopyForm } from "@/components/save-notice-copy-form";
 import { primaryButton, secondaryButton } from "@/components/styles";
 import { getIncreaseNotice, requireUser } from "@/lib/dal";
 import { formatLongDate } from "@/lib/dates";
@@ -53,6 +54,7 @@ export default async function RentIncreaseNoticePage({
             >
               Download PDF
             </a>
+            <SaveNoticeCopyForm noticeId={noticeId} label="Save N4 PDF in Documents" />
           </div>
         </div>
         <div className="mt-6">
@@ -121,6 +123,10 @@ export default async function RentIncreaseNoticePage({
           >
             Download PDF
           </a>
+          <SaveNoticeCopyForm
+            noticeId={noticeId}
+            label={`Save ${document.formCode} PDF in Documents`}
+          />
         </div>
       </div>
 

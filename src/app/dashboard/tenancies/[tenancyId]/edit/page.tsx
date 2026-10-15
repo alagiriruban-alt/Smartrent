@@ -1,8 +1,10 @@
 import Link from "next/link";
 
 import { updateTenant } from "@/actions/tenants";
+import { DocumentSection } from "@/components/document-section";
 import { TenantForm } from "@/components/tenant-form";
-import { getTenancy } from "@/lib/dal";
+import { getTenancy, requireUser } from "@/lib/dal";
+import { loadDocumentPanel } from "@/lib/services/documents";
 import { utcToDateOnly } from "@/lib/dates";
 import { centsToInput } from "@/lib/money";
 
@@ -15,6 +17,11 @@ export default async function EditTenancyPage({
 }) {
   const { tenancyId } = await params;
   const tenancy = await getTenancy(tenancyId);
+  const user = await requireUser();
+  const documents = await loadDocumentPanel(user.id, {
+    type: "tenant",
+    tenantId: tenancy.tenantId,
+  });
 
   return (
     <div>
@@ -53,6 +60,12 @@ export default async function EditTenancyPage({
           }}
         />
       </div>
+      <DocumentSection
+        documents={documents.documents}
+        targets={documents.targets}
+        storageMode={documents.storageMode}
+        showIndexLink
+      />
     </div>
   );
 }

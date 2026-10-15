@@ -7,6 +7,7 @@ describe("dashboard nav", () => {
     expect(dashboardNav.map((link) => link.label)).toEqual([
       "Rent roll",
       "Properties",
+      "Documents",
       "Rent",
       "Increases",
       "Reminders",
@@ -21,6 +22,22 @@ describe("dashboard nav", () => {
       false,
     );
     expect(isDashboardNavActive("/dashboard/rent", "/dashboard")).toBe(false);
+  });
+
+  it("highlights documents on the documents pages only", () => {
+    expect(isDashboardNavActive("/dashboard/documents", "/dashboard/documents")).toBe(
+      true,
+    );
+    expect(
+      isDashboardNavActive("/dashboard/documents/doc/file", "/dashboard/documents"),
+    ).toBe(true);
+    expect(isDashboardNavActive("/dashboard/documents", "/dashboard")).toBe(false);
+    expect(isDashboardNavActive("/dashboard/documents", "/dashboard/properties")).toBe(
+      false,
+    );
+    expect(isDashboardNavActive("/dashboard/properties/abc", "/dashboard/documents")).toBe(
+      false,
+    );
   });
 
   it("highlights properties for buildings, units, and tenant edits", () => {
