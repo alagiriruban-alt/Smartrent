@@ -385,6 +385,8 @@ export type ReminderCard = {
   tenancyId: string;
   tenantName: string;
   unitLabel: string;
+  unitId: string;
+  propertyId: string;
   propertyLabel: string;
   owingCents: number;
   daysLate: number;
@@ -422,6 +424,8 @@ export async function getReminderBoardFor(ownerId: string) {
     tenantFirstName: string;
     tenantEmail: string | null;
     unitLabel: string;
+    unitId: string;
+    propertyId: string;
     propertyLabel: string;
     place: string;
   }[] = [];
@@ -443,6 +447,8 @@ export async function getReminderBoardFor(ownerId: string) {
         tenantFirstName: tenancy.tenant.firstName,
         tenantEmail: tenancy.tenant.email,
         unitLabel: tenancy.unit.label,
+        unitId: tenancy.unitId,
+        propertyId: tenancy.unit.propertyId,
         propertyLabel: propertyTitle(tenancy.unit.property),
         place,
       });
@@ -475,6 +481,8 @@ export async function getReminderBoardFor(ownerId: string) {
         tenancyId: charge.tenancyId,
         tenantName: charge.tenantName,
         unitLabel: charge.unitLabel,
+        unitId: charge.unitId,
+        propertyId: charge.propertyId,
         propertyLabel: charge.propertyLabel,
         owingCents: charge.owingCents,
         daysLate: reminder.daysLate,

@@ -3,47 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
-  { href: "/dashboard", label: "Rent roll" },
-  { href: "/dashboard/rent", label: "Rent" },
-  { href: "/dashboard/rent-increases", label: "Increases" },
-  { href: "/dashboard/reminders", label: "Reminders" },
-  { href: "/dashboard/settings/agent", label: "Settings" },
-];
-
-function isActive(pathname: string, href: string) {
-  if (href === "/dashboard") {
-    return (
-      pathname === "/dashboard" || pathname.startsWith("/dashboard/properties")
-    );
-  }
-  if (href === "/dashboard/rent") {
-    return (
-      pathname === "/dashboard/rent" ||
-      pathname.startsWith("/dashboard/rent/") ||
-      pathname.startsWith("/dashboard/payments") ||
-      /\/tenancies\/[^/]+\/rent$/.test(pathname)
-    );
-  }
-  if (href === "/dashboard/rent-increases") {
-    return (
-      pathname.startsWith("/dashboard/rent-increases") ||
-      pathname.includes("/rent-increase") ||
-      pathname.includes("/notices/")
-    );
-  }
-  if (href === "/dashboard/settings/agent") {
-    return pathname.startsWith("/dashboard/settings");
-  }
-  return pathname.startsWith(href);
-}
+import { dashboardNav, isDashboardNavActive } from "@/lib/nav";
 
 export function DashboardNav() {
   const pathname = usePathname();
   return (
-    <nav className="mb-8 flex gap-5 text-sm font-semibold">
-      {links.map((link) => {
-        const active = isActive(pathname, link.href);
+    <nav className="mb-8 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
+      {dashboardNav.map((link) => {
+        const active = isDashboardNavActive(pathname, link.href);
         return (
           <Link
             key={link.href}

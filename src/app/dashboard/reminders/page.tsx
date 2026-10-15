@@ -43,7 +43,19 @@ export default async function RemindersPage() {
                     </Link>
                   </h2>
                   <p className="mt-1 text-sm text-muted">
-                    {cardItem.unitLabel} · {cardItem.propertyLabel}
+                    <Link
+                      href={`/dashboard/properties/${cardItem.propertyId}/units/${cardItem.unitId}`}
+                      className="hover:text-ink"
+                    >
+                      {cardItem.unitLabel}
+                    </Link>
+                    {" · "}
+                    <Link
+                      href={`/dashboard/properties/${cardItem.propertyId}`}
+                      className="hover:text-ink"
+                    >
+                      {cardItem.propertyLabel}
+                    </Link>
                   </p>
                 </div>
                 <div className="text-right">

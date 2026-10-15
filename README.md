@@ -114,7 +114,7 @@ That sample is dated from the day you run the seed, so Sam is late whenever toda
 - Add, edit, and delete a property. The province starts as Ontario.
 - Add, edit, and delete units on that property.
 - Add, edit, and remove a tenant on a unit, including the lease dates, monthly rent in Canadian dollars, the day rent is due, and optional email and phone.
-- Read a rent roll that shows, for each property, how many units are occupied and the monthly rent from leases that are active today (America/Toronto).
+- Open **Properties** for each building, its units, and the tenant on each lease. The list shows how many units are occupied and the monthly rent from leases that are active today (America/Toronto).
 - Open a monthly ledger for each tenant. A month is Due, Paid, Partial, or Late. Partial means some of that month has been paid. Late means nothing has been paid and the due date has passed.
 - Record a payment: date, amount, method, reference number, and notes. Interac e-Transfer is the default. Cash, cheque, pre-authorized debit, and other are there too. The money pays the oldest unpaid month first. A payment can be partial. Anything extra sits as credit until a later month opens.
 - Paste an Interac e-Transfer notification email. The form fills the amount, date, and reference and suggests the tenant. You confirm before it is saved.
@@ -217,7 +217,7 @@ When it asks for a password, enter `smartrent`. If you choose a different passwo
 ## Where things live
 
 ```text
-src/app          pages (home, sign in, rent roll, ledger, receipts, agent access)
+src/app          pages (home, sign in, rent roll, properties, ledger, receipts, agent access)
 src/app/api/mcp  the assistant endpoint
 src/actions      what the forms save
 src/lib          rules for money, dates, rent, and who can see a record
