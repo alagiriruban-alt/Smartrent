@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 
 import { etransferReferenceKey } from "@/lib/agent/reference";
 import { buildN4Arrears, type N4Arrears } from "@/lib/arrears";
-import { addDays, dateOnlyToUtc, formatLongDate, monthStart, todayDateOnly, utcToDateOnly } from "@/lib/dates";
+import { dateOnlyToUtc, formatLongDate, monthStart, todayDateOnly, utcToDateOnly } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import {
   daysLateLabel,
@@ -98,6 +98,13 @@ async function ownedLedger(ownerId: string, tenancyId: string) {
   });
 }
 
+export type N4LateBadge = {
+  noticeId: string;
+  status: "DRAFT" | "SERVED";
+  confirmed: boolean;
+  terminationDate: string | null;
+};
+
 export type LateTenant = {
   tenancyId: string;
   tenantName: string;
@@ -105,6 +112,7 @@ export type LateTenant = {
   propertyLabel: string;
   arrearsCents: number;
   daysLate: number;
+  n4: N4LateBadge | null;
 };
 
 export type RentTenancyRow = LateTenant & {
@@ -151,7 +159,15 @@ export async function getRentOverviewFor(ownerId: string) {
       monthStatus: monthCharge?.status ?? null,
       monthOwingCents: monthCharge?.owingCents ?? 0,
       balanceCents: summary.balanceCents,
+      n4: null,
     });
+  }
+  const badges = await latestN4Badges(
+    ownerId,
+    rows.map((row) => row.tenancyId),
+  );
+  for (const row of rows) {
+    row.n4 = badges.get(row.tenancyId) ?? null;
   }
   const late = rows
     .filter((row) => row.arrearsCents > 0)
@@ -726,91 +742,39 @@ export async function recordRentPayment(
   return { outcome, payment };
 }
 
-export type N4Draft = {
-  fileGenerated: false;
-  served: false;
-  tenancyId: string;
-  tenantName: string;
-  unitLabel: string;
-  propertyLabel: string;
-  address: string;
-  landlordName: string;
-  asOf: string;
-  totalOwingCents: number;
-  periods: N4Arrears["periods"];
-  suggestedTerminationDate: string;
-  notice: string;
-};
-
-const N4_NOTICE =
-  "Draft data only. No PDF or Landlord and Tenant Board form was created, and the notice was not served.";
-
-export async function buildN4Draft(
-  ownerId: string,
-  tenancyId: string,
-  today = todayDateOnly(),
-): Promise<N4Draft> {
-  const ledger = await getTenancyLedgerFor(ownerId, tenancyId);
-  if (!ledger) {
-    throw new ServiceError("not_found", "That lease was not found.");
+async function latestN4Badges(ownerId: string, tenancyIds: string[]) {
+  const map = new Map<string, N4LateBadge>();
+  if (tenancyIds.length === 0) {
+    return map;
   }
-  const landlord = await prisma.user.findUnique({
-    where: { id: ownerId },
-    select: { name: true },
-  });
-  return {
-    fileGenerated: false,
-    served: false,
-    tenancyId: ledger.tenancyId,
-    tenantName: ledger.tenantName,
-    unitLabel: ledger.unitLabel,
-    propertyLabel: ledger.propertyLabel,
-    address: ledger.address,
-    landlordName: landlord?.name ?? "Landlord",
-    asOf: ledger.arrears.asOf,
-    totalOwingCents: ledger.arrears.totalOwingCents,
-    periods: ledger.arrears.periods,
-    suggestedTerminationDate: addDays(today, 14),
-    notice: N4_NOTICE,
-  };
-}
-
-export async function saveN4Draft(
-  ownerId: string,
-  tenancyId: string,
-  today = todayDateOnly(),
-) {
-  const draft = await buildN4Draft(ownerId, tenancyId, today);
-  if (draft.totalOwingCents <= 0) {
-    return {
-      ...draft,
-      persisted: false as const,
-      noticeId: null,
-      noticeStatus: null,
-      documentCount: 0,
-      reason: "Nothing is past due, so no N4 draft was saved.",
-    };
-  }
-  const notice = await prisma.notice.create({
-    data: {
+  const notices = await prisma.notice.findMany({
+    where: {
       ownerId,
-      tenancyId,
       type: "N4",
-      status: "DRAFT",
-      totalOwingCents: draft.totalOwingCents,
-      terminationDate: dateOnlyToUtc(draft.suggestedTerminationDate),
-      notes: "Draft prepared via agent. Not served. No form file was created.",
+      tenancyId: { in: tenancyIds },
+      status: { in: ["DRAFT", "SERVED"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      tenancyId: true,
+      status: true,
+      confirmedAt: true,
+      terminationDate: true,
     },
   });
-  const documentCount = await prisma.document.count({
-    where: { noticeId: notice.id },
-  });
-  return {
-    ...draft,
-    persisted: true as const,
-    noticeId: notice.id,
-    noticeStatus: notice.status,
-    documentCount,
-    reason: null,
-  };
+  for (const notice of notices) {
+    if (map.has(notice.tenancyId) || notice.status === "VOID") {
+      continue;
+    }
+    map.set(notice.tenancyId, {
+      noticeId: notice.id,
+      status: notice.status,
+      confirmed: Boolean(notice.confirmedAt),
+      terminationDate: notice.terminationDate
+        ? utcToDateOnly(notice.terminationDate)
+        : null,
+    });
+  }
+  return map;
 }

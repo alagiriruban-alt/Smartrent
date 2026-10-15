@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { N4LateLink } from "@/components/n4-late-link";
 import { StatusPill } from "@/components/status-pill";
 import { card, secondaryButton } from "@/components/styles";
 import { formatLongDate } from "@/lib/dates";
@@ -11,7 +12,8 @@ import {
 import { CHARGE_STATUS_LABELS } from "@/lib/ledger";
 import { formatCad } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payment-methods";
-import { getTenancyLedger } from "@/lib/rent-data";
+import { getTenancyLedger, getTenancyN4Notices } from "@/lib/rent-data";
+import { formatDmy } from "@/lib/n4/document";
 
 export async function generateMetadata({
   params,
@@ -30,6 +32,8 @@ export default async function TenancyRentPage({
 }) {
   const { tenancyId } = await params;
   const ledger = await getTenancyLedger(tenancyId);
+  const notices = await getTenancyN4Notices(tenancyId);
+  const latest = notices.find((notice) => notice.status !== "VOID") ?? null;
 
   return (
     <div>
@@ -46,12 +50,22 @@ export default async function TenancyRentPage({
             {ledger.unitLabel} · {ledger.address}
           </p>
         </div>
-        <Link
-          href={`/dashboard/rent/payments/new?tenancyId=${ledger.tenancyId}`}
-          className={secondaryButton}
-        >
-          Record a payment
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {ledger.arrears.totalOwingCents > 0 ? (
+            <Link
+              href={`/dashboard/tenancies/${ledger.tenancyId}/n4`}
+              className={secondaryButton}
+            >
+              Prepare an N4
+            </Link>
+          ) : null}
+          <Link
+            href={`/dashboard/rent/payments/new?tenancyId=${ledger.tenancyId}`}
+            className={secondaryButton}
+          >
+            Record a payment
+          </Link>
+        </div>
       </div>
 
       <dl className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -75,9 +89,53 @@ export default async function TenancyRentPage({
         </div>
       </dl>
       <p className="mt-3 text-sm text-muted">
-        Arrears are the unpaid amounts whose due date has passed. That total
-        is what a future N4 non-payment notice would start from.
+        Arrears are the unpaid amounts whose due date has passed. An N4 starts
+        from that total.
       </p>
+      {ledger.arrears.totalOwingCents > 0 || notices.length > 0 ? (
+        <section className="mt-6">
+          <h2 className="font-serif text-2xl">N4 notices</h2>
+          {ledger.arrears.totalOwingCents > 0 ? (
+            <p className="mt-2">
+              <N4LateLink
+                tenancyId={ledger.tenancyId}
+                notice={
+                  latest
+                    ? {
+                        noticeId: latest.noticeId,
+                        status: latest.status === "SERVED" ? "SERVED" : "DRAFT",
+                        confirmed: latest.confirmed,
+                        terminationDate: latest.terminationDate,
+                      }
+                    : null
+                }
+              />
+            </p>
+          ) : null}
+          {notices.length > 0 ? (
+            <ul className="mt-3 flex flex-col gap-2">
+              {notices.map((notice) => (
+                <li key={notice.noticeId}>
+                  <Link
+                    href={`/dashboard/tenancies/${ledger.tenancyId}/notices/${notice.noticeId}`}
+                    className="text-sm font-semibold text-pine"
+                  >
+                    {notice.status === "SERVED"
+                      ? "Served"
+                      : notice.confirmed
+                        ? "Confirmed draft"
+                        : "Draft"}
+                    {notice.terminationDate
+                      ? ` · termination ${formatDmy(notice.terminationDate)}`
+                      : ""}
+                    {notice.servedOn ? ` · served ${formatDmy(notice.servedOn)}` : ""}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="mt-8">
         <h2 className="font-serif text-2xl">Months</h2>

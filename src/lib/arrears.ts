@@ -10,10 +10,9 @@ export type ArrearsPeriod = {
 };
 
 /**
- * Past-due rent for one lease. A future N4 notice can copy
- * `totalOwingCents` onto Notice.totalOwingCents and list `periods`
- * as the rent the notice claims. A period is included only after its
- * due date, and only for the unpaid portion.
+ * Past-due rent for one lease. An N4 notice copies `totalOwingCents`
+ * and lists `periods` as the rent the notice claims. A period is
+ * included only after its due date, and only for the unpaid portion.
  */
 export type N4Arrears = {
   tenancyId: string;

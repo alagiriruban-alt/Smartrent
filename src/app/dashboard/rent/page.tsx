@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { N4LateLink } from "@/components/n4-late-link";
 import { StatusPill } from "@/components/status-pill";
 import { card, primaryButton } from "@/components/styles";
 import { balancePhrase, daysLateLabel } from "@/lib/format";
@@ -36,15 +37,18 @@ export default async function RentPage() {
       ) : (
         <ul className="mt-8 flex flex-col gap-3">
           {rent.rows.map((row) => (
-            <li key={row.tenancyId}>
-              <Link
-                href={`/dashboard/tenancies/${row.tenancyId}/rent`}
-                className={`${card} block p-4 transition-colors hover:border-pine`}
-              >
+            <li key={row.tenancyId} className={`${card} p-4`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="font-semibold">{row.tenantName}</h2>
+                      <h2 className="font-semibold">
+                        <Link
+                          href={`/dashboard/tenancies/${row.tenancyId}/rent`}
+                          className="text-ink"
+                        >
+                          {row.tenantName}
+                        </Link>
+                      </h2>
                       {row.monthStatus ? (
                         <StatusPill status={row.monthStatus} />
                       ) : null}
@@ -52,6 +56,11 @@ export default async function RentPage() {
                     <p className="mt-1 text-sm text-muted">
                       {row.unitLabel} · {row.propertyLabel}
                     </p>
+                    {row.arrearsCents > 0 ? (
+                      <p className="mt-2">
+                        <N4LateLink tenancyId={row.tenancyId} notice={row.n4} />
+                      </p>
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <p className="font-serif text-2xl tabular-nums">
@@ -67,7 +76,6 @@ export default async function RentPage() {
                     )}
                   </div>
                 </div>
-              </Link>
             </li>
           ))}
         </ul>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { IncreaseList } from "@/components/increase-list";
+import { N4LateLink } from "@/components/n4-late-link";
 import { primaryButton, secondaryButton, card } from "@/components/styles";
 import { formatAddress, propertyTitle, daysLateLabel } from "@/lib/format";
 import { formatCad } from "@/lib/money";
@@ -93,18 +94,22 @@ export default async function DashboardPage() {
         ) : (
           <ul className="mt-4 flex flex-col gap-3">
             {rent.late.map((tenant) => (
-              <li key={tenant.tenancyId}>
-                <Link
-                  href={`/dashboard/tenancies/${tenant.tenancyId}/rent`}
-                  className={`${card} block p-4 transition-colors hover:border-danger/40`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold">{tenant.tenantName}</p>
-                      <p className="mt-1 text-sm text-muted">
-                        {tenant.unitLabel} · {tenant.propertyLabel}
-                      </p>
-                    </div>
+              <li key={tenant.tenancyId} className={`${card} p-4`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <Link
+                      href={`/dashboard/tenancies/${tenant.tenancyId}/rent`}
+                      className="font-semibold text-ink"
+                    >
+                      {tenant.tenantName}
+                    </Link>
+                    <p className="mt-1 text-sm text-muted">
+                      {tenant.unitLabel} · {tenant.propertyLabel}
+                    </p>
+                    <p className="mt-2">
+                      <N4LateLink tenancyId={tenant.tenancyId} notice={tenant.n4} />
+                    </p>
+                  </div>
                     <div className="text-right">
                       <p className="font-serif text-2xl tabular-nums text-danger">
                         {formatCad(tenant.arrearsCents)}
@@ -114,7 +119,6 @@ export default async function DashboardPage() {
                       </p>
                     </div>
                   </div>
-                </Link>
               </li>
             ))}
           </ul>
