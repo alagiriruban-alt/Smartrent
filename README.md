@@ -128,7 +128,7 @@ That sample is dated from the day you run the seed, so Sam is late whenever toda
 - The draft warns you if the increase is above the guideline, if the effective date is less than 12 months after move-in or the last increase, or if fewer than 90 days remain before that date. You can still save the draft after you read the warning.
 - Keep the yearly Ontario guideline percents under Settings. Each year has a source link and a verified flag. An N1 draft is blocked until that year's guideline is verified. N2 drafts are not blocked by the guideline, because the guideline does not apply.
 - Open **Documents** to upload a PDF, JPG, PNG, HEIC, or DOCX (10 MB maximum) and attach it to a property, unit, tenant, or lease. Categories are lease, ID, insurance, inspection, notice (N1, N2, or N4), receipt, and other. An optional expiry date, such as an insurance renewal, shows on the upcoming-expiry list for the next 60 days, along with dates that have already passed. The same list appears on the property, unit, and tenant pages.
-- On a rent-increase draft, choose **Save N1 PDF in Documents** or **Save N2 PDF in Documents**. On a lease with unpaid rent, choose **Save N4 draft in Documents**. Those copies are drafts. They are not official forms and they are not served.
+- On a rent-increase draft, choose **Save N1 PDF in Documents** or **Save N2 PDF in Documents**. On an N4 notice, choose **Save N4 PDF in Documents**. Those copies are the same PDFs as Download PDF. They are not official forms and they are not served.
 
 The sample landlord has Jordan Patel eligible for an increase inside the 120-day window, and the lower unit marked guideline-exempt. Running the seed again refreshes Jordan's last-increase date so that window stays current, and it puts the guideline years back to the checked percents. The guideline years 2018 through 2027 are copied from [Ontario's rent increase guideline page](https://www.ontario.ca/page/residential-rent-increases) and stored as verified. That page, updated June 23, 2026, lists 2026 as 2.1% and 2027 as 1.9%.
 - Create a personal token under **Settings** so an assistant can use the same records. You can revoke the token on that page. What the assistant did is listed in the audit log, tagged **via agent**.
@@ -177,7 +177,7 @@ set public = false,
 
 The bucket stays private. The app uploads and signs URLs with the service role, so you do not add a public read policy.
 
-Production database changes are applied by hand. After you deploy, paste `prisma/migrations/20261015020000_document_storage/migration.sql` into the Supabase SQL editor. It adds the document columns, the audit log, and row level security with no policies, matching the other tables. The Data API cannot read those rows. The app connects through `DATABASE_URL` as the table owner, which bypasses row level security.
+Production database changes are applied by hand. After you deploy, paste `prisma/migrations/20261015060000_document_storage/migration.sql` into the Supabase SQL editor. It adds the document columns, the audit log, and row level security with no policies, matching the other tables. The Data API cannot read those rows. The app connects through `DATABASE_URL` as the table owner, which bypasses row level security.
 
 ## Connect an assistant (MCP)
 
@@ -193,6 +193,8 @@ A read token can list properties, tenants, rent status, late tenants, reminders,
 Writes that move money, and the N4 draft, do not save on the first call. The tool returns `confirmationToken`. Call the same tool again with that token and the same arguments. The token lasts 15 minutes and works once. `ingest_etransfer_email` is the exception: when the sender, amount, date, and reference match one tenant, it records immediately. A weaker match returns `pending_confirmation` and waits for the token. The same e-Transfer reference is never posted twice.
 
 `prepare_n4_draft` returns the amounts and dates for an N4. It does not create a PDF and it does not serve a notice.
+
+`prepare_n4_notice` prepares the fuller N4: tenant names, the unit address, landlord contact, the rent-owing table, and a termination date that follows the current Landlord and Tenant Board rules. The first call previews. The second call, with the same arguments and `confirmationToken`, saves a draft. It does not store a PDF and it does not serve the notice. In the app, open the tenant, choose Prepare an N4, review the draft, confirm it, and download the data-sheet PDF. The PDF stays marked DRAFT until you confirm it. It is not the official form. The official N4 is linked on the draft.
 
 Each call is limited (60 per minute by default) and can see only the landlord who created the token.
 
@@ -279,4 +281,3 @@ The ledger keeps one charge per lease month. Payments are split across those mon
 The database also has tables for later work that is not on screen yet:
 
 - expenses, using the categories on CRA form T776
-- a full N4 notice workflow (a draft PDF can already be saved under Documents)

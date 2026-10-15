@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { N4LateLink } from "@/components/n4-late-link";
 import { StatusPill } from "@/components/status-pill";
 import { card, primaryButton, secondaryButton } from "@/components/styles";
 import { balancePhrase, daysLateLabel } from "@/lib/format";
@@ -78,6 +79,11 @@ export default async function RentPage() {
                       {row.propertyLabel}
                     </Link>
                   </p>
+                  {row.arrearsCents > 0 ? (
+                    <p className="mt-2">
+                      <N4LateLink tenancyId={row.tenancyId} notice={row.n4} />
+                    </p>
+                  ) : null}
                 </div>
                 <div className="text-right">
                   <p className="font-serif text-2xl tabular-nums">

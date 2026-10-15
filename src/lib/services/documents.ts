@@ -14,14 +14,15 @@ import {
   isUploadKind,
 } from "@/lib/documents/catalog";
 import { inspectDocumentFile, type AcceptedFile } from "@/lib/documents/files";
-import { n4DraftLines, noticeFileName } from "@/lib/documents/notice-lines";
+import { noticeFileName } from "@/lib/documents/notice-lines";
 import { getDocumentStorage, storageKeyFor } from "@/lib/documents/storage";
 import { addDays, dateOnlyToUtc, isIsoDate, todayDateOnly, utcToDateOnly } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 import { propertyTitle, tenantName } from "@/lib/format";
+import { buildTextPdf } from "@/lib/n4/pdf";
 import { buildPlainPdf } from "@/lib/plain-pdf";
 import { ServiceError } from "@/lib/services/errors";
-import { buildN4Draft, saveN4Draft } from "@/lib/services/rent";
+import { getN4Notice, saveN4Draft } from "@/lib/services/n4";
 import { getRentIncreaseNotice } from "@/lib/services/rent-increase";
 
 const PRISMA_SUBJECT: Record<DocumentSubjectName, DocumentSubject> = {
@@ -740,10 +741,13 @@ export async function saveNoticePdf(ownerId: string, noticeId: string): Promise<
   let code: string;
   let tenantLabel: string;
   if (notice.type === "N4") {
-    const draft = await buildN4Draft(ownerId, notice.tenancyId);
-    lines = n4DraftLines(draft);
+    const n4 = await getN4Notice(ownerId, notice.id);
+    if (!n4) {
+      throw new ServiceError("not_found", "That notice was not found.");
+    }
+    lines = n4.lines;
     code = "N4";
-    tenantLabel = draft.tenantName;
+    tenantLabel = n4.tenantName;
   } else {
     const increase = await getRentIncreaseNotice(ownerId, notice.id);
     if (!increase) {
@@ -755,7 +759,7 @@ export async function saveNoticePdf(ownerId: string, noticeId: string): Promise<
   }
   const inspected = inspectDocumentFile({
     fileName: noticeFileName(code, tenantLabel),
-    bytes: buildPlainPdf(lines),
+    bytes: notice.type === "N4" ? buildTextPdf(lines) : buildPlainPdf(lines),
   });
   if (!inspected.ok) {
     throw new ServiceError("invalid", inspected.message);

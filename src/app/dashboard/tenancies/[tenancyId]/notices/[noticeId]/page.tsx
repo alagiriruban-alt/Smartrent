@@ -1,16 +1,29 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { confirmN4Action } from "@/actions/n4";
+import { N4ServeForm } from "@/components/n4-serve-form";
+import { N4Sheet } from "@/components/n4-sheet";
 import { PrintButton } from "@/components/print-button";
 import { SaveNoticeCopyForm } from "@/components/save-notice-copy-form";
-import { secondaryButton } from "@/components/styles";
-import { getIncreaseNotice } from "@/lib/dal";
+import { primaryButton, secondaryButton } from "@/components/styles";
+import { getIncreaseNotice, requireUser } from "@/lib/dal";
 import { formatLongDate } from "@/lib/dates";
 import { formatCad } from "@/lib/money";
 import { formatBasisPoints } from "@/lib/rent-increase/calculate";
 import { DRAFT_DISCLAIMER } from "@/lib/rent-increase/rules";
+import { getN4Notice } from "@/lib/services/n4";
 
-export const metadata = { title: "Rent increase draft" };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ tenancyId: string; noticeId: string }>;
+}) {
+  const { noticeId } = await params;
+  const user = await requireUser();
+  const n4 = await getN4Notice(user.id, noticeId);
+  return { title: n4 ? "N4 notice" : "Rent increase draft" };
+}
 
 export default async function RentIncreaseNoticePage({
   params,
@@ -18,6 +31,75 @@ export default async function RentIncreaseNoticePage({
   params: Promise<{ tenancyId: string; noticeId: string }>;
 }) {
   const { tenancyId, noticeId } = await params;
+  const user = await requireUser();
+  const n4 = await getN4Notice(user.id, noticeId);
+  if (n4) {
+    if (n4.tenancyId !== tenancyId) {
+      notFound();
+    }
+    return (
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+          <Link
+            href={`/dashboard/tenancies/${tenancyId}/rent`}
+            className="text-sm font-semibold text-pine"
+          >
+            Back to {n4.tenantName}
+          </Link>
+          <div className="flex flex-wrap gap-2">
+            <PrintButton />
+            <a
+              href={`/dashboard/tenancies/${tenancyId}/notices/${noticeId}/pdf`}
+              className={secondaryButton}
+            >
+              Download PDF
+            </a>
+            <SaveNoticeCopyForm noticeId={noticeId} label="Save N4 PDF in Documents" />
+          </div>
+        </div>
+        <div className="mt-6">
+          <N4Sheet notice={n4} />
+        </div>
+        {n4.status === "DRAFT" ? (
+          <div className="mt-6 flex flex-col gap-6 print:hidden">
+            <Link
+              href={`/dashboard/tenancies/${tenancyId}/n4?noticeId=${noticeId}`}
+              className="text-sm font-semibold text-pine"
+            >
+              Edit this draft
+            </Link>
+            {n4.confirmedAt ? (
+              <section>
+                <h2 className="font-serif text-2xl">Record service</h2>
+                <p className="mt-2 text-sm text-muted">
+                  After you give the official N4, record the day and the method.
+                  If mail or courier would push the earliest end date past the
+                  termination date, edit the draft first.
+                </p>
+                <N4ServeForm
+                  tenancyId={tenancyId}
+                  noticeId={noticeId}
+                  defaultServedOn={n4.givenOn}
+                  defaultMethod={n4.serviceMethod}
+                />
+              </section>
+            ) : (
+              <form action={confirmN4Action}>
+                <input type="hidden" name="tenancyId" value={tenancyId} />
+                <input type="hidden" name="noticeId" value={noticeId} />
+                <button type="submit" className={primaryButton}>
+                  Confirm this notice
+                </button>
+                <p className="mt-2 text-sm text-muted">
+                  Confirming removes the DRAFT mark. It does not serve the notice.
+                </p>
+              </form>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   const { notice } = await getIncreaseNotice(noticeId);
   if (notice.tenancyId !== tenancyId) {
     notFound();

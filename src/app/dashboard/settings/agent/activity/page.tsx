@@ -31,8 +31,8 @@ export default async function AgentActivityPage() {
       </p>
       <h1 className="mt-1 font-serif text-4xl tracking-tight">Audit log</h1>
       <p className="mt-2 max-w-xl text-muted">
-        Each row is something an assistant did with a token for this account.
-        Actions are tagged via agent.
+        N4 notices you save, confirm, or mark as served are listed here.
+        Anything an assistant did with a token is tagged via agent.
       </p>
       {entries.length === 0 ? (
         <p className={`${card} mt-8 p-4 text-muted`}>
@@ -47,7 +47,7 @@ export default async function AgentActivityPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-semibold">{entry.tool}</h2>
                     <span className="rounded-full bg-pine/10 px-2 py-0.5 text-xs font-semibold text-pine">
-                      via agent
+                      {entry.viaAgent ? "via agent" : "in the app"}
                     </span>
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted">
                       {entry.status}

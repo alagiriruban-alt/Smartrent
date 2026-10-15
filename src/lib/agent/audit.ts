@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/db";
 
-export async function writeAgentAudit(input: {
+export async function writeAudit(input: {
   ownerId: string;
   tokenId: string | null;
   tool: string;
   status: "ok" | "pending" | "error";
   summary: string;
+  viaAgent: boolean;
 }) {
   await prisma.agentAuditLog.create({
     data: {
@@ -14,9 +15,19 @@ export async function writeAgentAudit(input: {
       tool: input.tool,
       status: input.status,
       summary: input.summary,
-      viaAgent: true,
+      viaAgent: input.viaAgent,
     },
   });
+}
+
+export async function writeAgentAudit(input: {
+  ownerId: string;
+  tokenId: string | null;
+  tool: string;
+  status: "ok" | "pending" | "error";
+  summary: string;
+}) {
+  await writeAudit({ ...input, viaAgent: true });
 }
 
 export async function listAgentAudit(ownerId: string, limit = 50) {
