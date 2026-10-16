@@ -79,7 +79,7 @@ export default async function RentPage() {
                       {row.propertyLabel}
                     </Link>
                   </p>
-                  {row.arrearsCents > 0 ? (
+                  {row.arrearsCents > 0 && row.ontarioNotices ? (
                     <p className="mt-2">
                       <N4LateLink tenancyId={row.tenancyId} notice={row.n4} />
                     </p>

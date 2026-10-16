@@ -10,6 +10,7 @@
     "test": "prisma migrate deploy && vitest run",
     "mcp:check": "node --env-file=.env --import tsx scripts/mcp-client-test.ts",
     "db:seed": "node --env-file=.env --import tsx prisma/seed.ts",
+    "import:bundle": "node --env-file=.env --import tsx scripts/import-bundle.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

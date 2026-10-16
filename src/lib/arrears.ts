@@ -57,3 +57,47 @@ export function buildN4Arrears(input: {
     periods,
   };
 }
+
+export type ArrearsSplit = {
+  rent: N4Arrears;
+  other: N4Arrears;
+  rentOwingCents: number;
+  otherOwingCents: number;
+  totalOwingCents: number;
+};
+
+/** N4 uses `rent` only. Other charges stay on their own balance. */
+export function splitArrears(input: {
+  tenancyId: string;
+  asOf: string;
+  rent: Array<{
+    periodStart: string;
+    dueOn: string;
+    amountCents: number;
+    paidCents: number;
+  }>;
+  other: Array<{
+    periodStart: string;
+    dueOn: string;
+    amountCents: number;
+    paidCents: number;
+  }>;
+}): ArrearsSplit {
+  const rent = buildN4Arrears({
+    tenancyId: input.tenancyId,
+    asOf: input.asOf,
+    charges: input.rent,
+  });
+  const other = buildN4Arrears({
+    tenancyId: input.tenancyId,
+    asOf: input.asOf,
+    charges: input.other,
+  });
+  return {
+    rent,
+    other,
+    rentOwingCents: rent.totalOwingCents,
+    otherOwingCents: other.totalOwingCents,
+    totalOwingCents: rent.totalOwingCents + other.totalOwingCents,
+  };
+}

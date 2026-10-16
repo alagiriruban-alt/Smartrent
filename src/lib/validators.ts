@@ -4,6 +4,7 @@ import { isIsoDate } from "@/lib/dates";
 import { parseCadToCents } from "@/lib/money";
 import { isPaymentMethod, type RentPaymentMethod } from "@/lib/payment-methods";
 import { normalizePostalCode } from "@/lib/postal";
+import { isJurisdiction, jurisdictionForProvince, type JurisdictionCode } from "@/lib/jurisdiction";
 import { isProvinceCode, type ProvinceCode } from "@/lib/provinces";
 
 export type FieldErrors = Record<string, string[] | undefined>;
@@ -94,6 +95,7 @@ export type PropertyInput = {
   streetAddress: string;
   city: string;
   province: ProvinceCode;
+  jurisdiction: JurisdictionCode;
   postalCode: string;
 };
 
@@ -102,6 +104,7 @@ export function parseProperty(input: {
   streetAddress: unknown;
   city: unknown;
   province: unknown;
+  jurisdiction?: unknown;
   postalCode: unknown;
 }): Parsed<PropertyInput> {
   const parsed = z
@@ -137,6 +140,15 @@ export function parseProperty(input: {
     return { ok: false, errors };
   }
 
+  const requested =
+    typeof input.jurisdiction === "string" ? input.jurisdiction.trim().toUpperCase() : "";
+  const jurisdiction = requested
+    ? requested
+    : jurisdictionForProvince(parsed.data.province);
+  if (!isJurisdiction(jurisdiction)) {
+    return { ok: false, errors: { jurisdiction: ["Choose Ontario or Quebec."] } };
+  }
+
   return {
     ok: true,
     data: {
@@ -144,6 +156,7 @@ export function parseProperty(input: {
       streetAddress: parsed.data.streetAddress,
       city: parsed.data.city,
       province: parsed.data.province,
+      jurisdiction,
       postalCode,
     },
   };

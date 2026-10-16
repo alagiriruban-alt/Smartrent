@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 
-import { etransferReferenceKey } from "@/lib/agent/reference";
+import { paymentDedupeKey } from "@/lib/payments/identity";
+import { ontarioNoticesEnabled } from "@/lib/jurisdiction";
 import { buildN4Arrears, type N4Arrears } from "@/lib/arrears";
 import { dateOnlyToUtc, formatLongDate, monthStart, todayDateOnly, utcToDateOnly } from "@/lib/dates";
 import { prisma } from "@/lib/db";
@@ -12,6 +13,7 @@ import {
   tenantName,
 } from "@/lib/format";
 import {
+  applyRentReductions,
   planCreditAllocations,
   summarizeLedger,
   summarizeMonth,
@@ -42,9 +44,10 @@ const ledgerInclude = {
     orderBy: { periodStart: "asc" as const },
   },
   payments: {
-    include: { allocations: { include: { charge: true } } },
+    include: { allocations: { include: { charge: true, ledgerCharge: true } } },
     orderBy: { paidOn: "desc" as const },
   },
+  rentCredits: true,
 };
 
 type LedgerTenancy = NonNullable<
@@ -75,18 +78,38 @@ function toSummary(tenancy: LedgerTenancy, today: string) {
     referenceNumber: payment.referenceNumber,
     note: payment.note,
     allocatedCents: chargePaidCents(payment.allocations),
-    allocations: payment.allocations.map((row) => ({
-      amountCents: row.amountCents,
-      periodStart: utcToDateOnly(row.charge.periodStart),
-    })),
+    allocations: payment.allocations.flatMap((row) => {
+      if (!row.charge) {
+        return [];
+      }
+      return [
+        {
+          amountCents: row.amountCents,
+          periodStart: utcToDateOnly(row.charge.periodStart),
+        },
+      ];
+    }),
   }));
+  const reductions = [
+    ...tenancy.rentCredits.map((credit) => ({
+      period: credit.period,
+      amountCents: credit.amountCents,
+    })),
+    ...(tenancy.depositAppliedPeriod && tenancy.depositHeldCents > 0
+      ? [{ period: tenancy.depositAppliedPeriod, amountCents: tenancy.depositHeldCents }]
+      : []),
+  ];
+  const adjusted = applyRentReductions(charges, reductions);
+  const summary = summarizeLedger(adjusted, payments, today);
+  const reductionCents = reductions.reduce((sum, row) => sum + row.amountCents, 0);
+  summary.balanceCents -= reductionCents;
   return {
-    summary: summarizeLedger(charges, payments, today),
+    summary,
     payments,
     arrears: buildN4Arrears({
       tenancyId: tenancy.id,
       asOf: today,
-      charges,
+      charges: adjusted,
     }),
   };
 }
@@ -112,6 +135,7 @@ export type LateTenant = {
   propertyLabel: string;
   arrearsCents: number;
   daysLate: number;
+  ontarioNotices: boolean;
   n4: N4LateBadge | null;
 };
 
@@ -159,6 +183,7 @@ export async function getRentOverviewFor(ownerId: string) {
       monthStatus: monthCharge?.status ?? null,
       monthOwingCents: monthCharge?.owingCents ?? 0,
       balanceCents: summary.balanceCents,
+      ontarioNotices: ontarioNoticesEnabled(tenancy.unit.property),
       n4: null,
     });
   }
@@ -199,6 +224,13 @@ export type TenancyLedger = {
   propertyId: string;
   unitId: string;
   address: string;
+  ontarioNotices: boolean;
+  jurisdiction: string;
+  leaseStart: string;
+  leaseEnd: string | null;
+  depositHeldCents: number;
+  depositAppliedOn: string | null;
+  depositAppliedPeriod: string | null;
   summary: LedgerSummary;
   arrears: N4Arrears;
   payments: {
@@ -245,6 +277,15 @@ export async function getTenancyLedgerFor(
     propertyId: tenancy.unit.propertyId,
     unitId: tenancy.unitId,
     address: formatAddress(tenancy.unit.property),
+    ontarioNotices: ontarioNoticesEnabled(tenancy.unit.property),
+    jurisdiction: tenancy.unit.property.jurisdiction,
+    leaseStart: utcToDateOnly(tenancy.leaseStart),
+    leaseEnd: tenancy.leaseEnd ? utcToDateOnly(tenancy.leaseEnd) : null,
+    depositHeldCents: tenancy.depositHeldCents,
+    depositAppliedOn: tenancy.depositAppliedOn
+      ? utcToDateOnly(tenancy.depositAppliedOn)
+      : null,
+    depositAppliedPeriod: tenancy.depositAppliedPeriod,
     summary,
     arrears,
     payments: payments.map((payment) => ({
@@ -324,7 +365,7 @@ async function loadPayment(ownerId: string, paymentId: string) {
   return prisma.rentPayment.findFirst({
     where: { id: paymentId, ownerId },
     include: {
-      allocations: { include: { charge: true } },
+      allocations: { include: { charge: true, ledgerCharge: true } },
       tenancy: {
         include: {
           tenant: true,
@@ -342,10 +383,19 @@ export async function getPaymentRecordFor(ownerId: string, paymentId: string) {
     return null;
   }
   const applied = payment.allocations
-    .map((row) => ({
-      periodStart: utcToDateOnly(row.charge.periodStart),
-      amountCents: row.amountCents,
-    }))
+    .flatMap((row) => {
+      const periodStart = row.charge
+        ? utcToDateOnly(row.charge.periodStart)
+        : row.ledgerCharge?.period
+          ? `${row.ledgerCharge.period}-01`
+          : row.ledgerCharge
+            ? utcToDateOnly(row.ledgerCharge.dueOn)
+            : null;
+      if (!periodStart) {
+        return [];
+      }
+      return [{ periodStart, amountCents: row.amountCents }];
+    })
     .sort((a, b) => a.periodStart.localeCompare(b.periodStart));
   const allocatedCents = applied.reduce((sum, row) => sum + row.amountCents, 0);
   return {
@@ -603,10 +653,16 @@ export async function previewRentPayment(
   if (!tenancy) {
     throw new ServiceError("not_found", "That lease was not found.");
   }
-  const referenceKey = etransferReferenceKey(input.method, input.referenceNumber);
-  if (referenceKey) {
+  const identity = paymentDedupeKey({
+    method: input.method,
+    referenceNumber: input.referenceNumber,
+    tenancyId: input.tenancyId,
+    paidOn: input.paidOn,
+    amountCents: input.amountCents,
+  });
+  if (identity.dedupeKey) {
     const existing = await prisma.rentPayment.findFirst({
-      where: { ownerId, referenceKey },
+      where: { ownerId, dedupeKey: identity.dedupeKey },
       select: { id: true },
     });
     if (existing) {
@@ -695,20 +751,24 @@ export async function recordRentPayment(
   if (!tenancy) {
     throw new ServiceError("not_found", "That lease was not found.");
   }
-  const referenceKey = etransferReferenceKey(input.method, input.referenceNumber);
+  const identity = paymentDedupeKey({
+    method: input.method,
+    referenceNumber: input.referenceNumber,
+    tenancyId: tenancy.id,
+    paidOn: input.paidOn,
+    amountCents: input.amountCents,
+  });
 
   let outcome: "recorded" | "already_recorded";
   let paymentId: string;
   try {
     const created = await prisma.$transaction(async (tx) => {
-      if (referenceKey) {
-        const existing = await tx.rentPayment.findFirst({
-          where: { ownerId, referenceKey },
-          select: { id: true },
-        });
-        if (existing) {
-          return { outcome: "already_recorded" as const, id: existing.id };
-        }
+      const existing = await tx.rentPayment.findFirst({
+        where: { ownerId, dedupeKey: identity.dedupeKey },
+        select: { id: true },
+      });
+      if (existing) {
+        return { outcome: "already_recorded" as const, id: existing.id };
       }
       await syncTenancyLedger(tx, tenancy, today);
       const payment = await tx.rentPayment.create({
@@ -719,7 +779,9 @@ export async function recordRentPayment(
           paidOn: dateOnlyToUtc(input.paidOn),
           method: input.method,
           referenceNumber: input.referenceNumber,
-          referenceKey,
+          referenceType: identity.referenceType,
+          referenceKey: identity.referenceKey,
+          dedupeKey: identity.dedupeKey,
           note: input.note,
         },
       });
@@ -729,11 +791,11 @@ export async function recordRentPayment(
     outcome = created.outcome;
     paymentId = created.id;
   } catch (error) {
-    if (!isUniqueViolation(error) || !referenceKey) {
+    if (!isUniqueViolation(error)) {
       throw error;
     }
     const existing = await prisma.rentPayment.findFirst({
-      where: { ownerId, referenceKey },
+      where: { ownerId, dedupeKey: identity.dedupeKey },
       select: { id: true },
     });
     if (!existing) {

@@ -15,6 +15,7 @@ function propertyFields(formData: FormData) {
     streetAddress: formString(formData, "streetAddress"),
     city: formString(formData, "city"),
     province: formString(formData, "province"),
+    jurisdiction: formString(formData, "jurisdiction"),
     postalCode: formString(formData, "postalCode"),
   };
 }

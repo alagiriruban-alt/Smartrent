@@ -25,6 +25,7 @@ export function PropertyForm({
     streetAddress?: string;
     city?: string;
     province?: string;
+    jurisdiction?: string;
     postalCode?: string;
   };
 }) {
@@ -98,6 +99,23 @@ export function PropertyForm({
           </select>
         </Field>
       </div>
+      <Field
+        label="Jurisdiction"
+        htmlFor="jurisdiction"
+        hint="Quebec properties keep a ledger only. Ontario notices and the guideline stay off."
+        error={error("jurisdiction")}
+      >
+        <select
+          id="jurisdiction"
+          name="jurisdiction"
+          defaultValue={initial?.jurisdiction ?? (initial?.province === "QC" ? "QC" : "ON")}
+          className={textInput}
+          aria-invalid={Boolean(error("jurisdiction"))}
+        >
+          <option value="ON">Ontario</option>
+          <option value="QC">Quebec, record only</option>
+        </select>
+      </Field>
       <Field label="Postal code" htmlFor="postalCode" error={error("postalCode")}>
         <input
           id="postalCode"

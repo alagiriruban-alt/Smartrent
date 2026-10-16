@@ -1,9 +1,12 @@
 import Link from "next/link";
 
+import { saveOwners } from "@/actions/books";
 import { deleteProperty } from "@/actions/properties";
+import { OwnersForm } from "@/components/book-forms";
 import { DeleteForm } from "@/components/delete-form";
 import { DocumentSection } from "@/components/document-section";
 import { card, secondaryButton } from "@/components/styles";
+import { listExpenses, propertyShares } from "@/lib/books-records";
 import { getProperty } from "@/lib/dal";
 import { loadDocumentPanel } from "@/lib/services/documents";
 import { formatLongDate, utcToDateOnly } from "@/lib/dates";
@@ -14,8 +17,10 @@ import {
   propertyTitle,
   tenantName,
 } from "@/lib/format";
+import { QUEBEC_RECORD_ONLY, ontarioNoticesEnabled } from "@/lib/jurisdiction";
 import { formatCad } from "@/lib/money";
 import { tenancyPhase } from "@/lib/portfolio";
+import { formatShare } from "@/lib/shares";
 
 export async function generateMetadata({
   params,
@@ -38,6 +43,12 @@ export default async function PropertyPage({
 }) {
   const { propertyId } = await params;
   const { user, property, today, summary } = await getProperty(propertyId);
+  const shares = await propertyShares(user.id, property.id);
+  const expenses = await listExpenses(user.id, property.id);
+  const ontario = ontarioNoticesEnabled(property);
+  const ownerLines =
+    shares?.owners.map((owner) => `${owner.name}, ${formatShare(owner.shareBps).replace("%", "")}`).join("\n") ??
+    "";
   const documents = await loadDocumentPanel(user.id, {
     type: "property",
     propertyId: property.id,
@@ -62,15 +73,22 @@ export default async function PropertyPage({
           <p className="mt-2 text-sm">
             {summary.occupiedCount} of {summary.unitCount}{" "}
             {summary.unitCount === 1 ? "unit" : "units"} occupied ·{" "}
-            {formatCad(summary.monthlyRentCents)} / month
+            {formatCad(summary.monthlyRentCents)} / month ·{" "}
+            {property.jurisdiction === "QC" ? "Quebec, record only" : "Ontario"}
           </p>
+          {!ontario ? <p className="mt-2 max-w-xl text-sm text-muted">{QUEBEC_RECORD_ONLY}</p> : null}
         </div>
-        <Link
-          href={`/dashboard/properties/${property.id}/edit`}
-          className={secondaryButton}
-        >
-          Edit property
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/dashboard/properties/${property.id}/import`} className={secondaryButton}>
+            Import ledger
+          </Link>
+          <Link href={`/dashboard/properties/${property.id}/expenses/new`} className={secondaryButton}>
+            Add expense
+          </Link>
+          <Link href={`/dashboard/properties/${property.id}/edit`} className={secondaryButton}>
+            Edit property
+          </Link>
+        </div>
       </div>
 
       <div className="mt-8 flex items-center justify-between gap-3">
@@ -158,6 +176,79 @@ export default async function PropertyPage({
           })}
         </ul>
       )}
+
+      <section className="mt-10">
+        <h2 className="font-serif text-2xl">Owners</h2>
+        <p className="mt-1 max-w-xl text-sm text-muted">
+          Percentages split T776 totals. They have to add up to 100.
+        </p>
+        {shares && shares.owners.length > 0 ? (
+          <ul className="mt-3 flex flex-col gap-1 text-sm">
+            {shares.owners.map((owner) => (
+              <li key={owner.id}>
+                {owner.name} · {formatShare(owner.shareBps)}
+                {shares.totalCents > 0
+                  ? ` · ${formatCad(shares.ownerTotals.find((line) => line.id === owner.id)?.amountCents ?? 0)} of expenses`
+                  : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted">No owners recorded yet.</p>
+        )}
+        <OwnersForm action={saveOwners} propertyId={property.id} initial={ownerLines} />
+      </section>
+
+      <section className="mt-10">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-serif text-2xl">Expenses</h2>
+          <a href={`/dashboard/properties/${property.id}/t776`} className={secondaryButton}>
+            Download T776 split
+          </a>
+        </div>
+        {expenses.length === 0 ? (
+          <p className={`${card} mt-4 p-4 text-muted`}>No expenses yet.</p>
+        ) : (
+          <ul className="mt-4 flex flex-col gap-3">
+            {expenses.map((expense) => (
+              <li key={expense.id} className={`${card} p-4`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{expense.description}</p>
+                    <p className="mt-1 text-sm text-muted">
+                      {formatLongDate(expense.incurredOn)}
+                      {expense.vendor ? ` · ${expense.vendor}` : ""}
+                      {expense.invoiceNumber ? ` · ${expense.invoiceNumber}` : ""}
+                      {" · "}
+                      {expense.category.replaceAll("_", " ").toLowerCase()}
+                    </p>
+                  </div>
+                  <p className="font-serif text-xl tabular-nums">{formatCad(expense.totalCents)}</p>
+                </div>
+                <p className="mt-2 text-sm text-muted">
+                  Subtotal {formatCad(expense.subtotalCents)} · HST {formatCad(expense.hstCents)}
+                  {expense.receiptDocumentId ? ` · receipt ${expense.receiptDocumentId}` : ""}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {shares && shares.categories.length > 0 ? (
+          <div className="mt-4">
+            <h3 className="font-serif text-xl">T776 by owner</h3>
+            <ul className="mt-3 flex flex-col gap-2 text-sm">
+              {shares.categories.map((category) => (
+                <li key={category.category}>
+                  {category.line} {category.label} · {formatCad(category.totalCents)}
+                  {category.shares.length > 0
+                    ? ` · ${category.shares.map((share) => `${share.name} ${formatCad(share.amountCents)}`).join(", ")}`
+                    : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
 
       <DocumentSection
         documents={documents.documents}
