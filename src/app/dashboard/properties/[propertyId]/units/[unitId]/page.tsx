@@ -3,8 +3,10 @@ import Link from "next/link";
 import { deleteUnit } from "@/actions/units";
 import { deleteTenant } from "@/actions/tenants";
 import { DeleteForm } from "@/components/delete-form";
+import { DocumentSection } from "@/components/document-section";
 import { card, secondaryButton } from "@/components/styles";
-import { getUnit } from "@/lib/dal";
+import { getUnit, requireUser } from "@/lib/dal";
+import { loadDocumentPanel } from "@/lib/services/documents";
 import { formatLongDate, utcToDateOnly } from "@/lib/dates";
 import { increaseSchedule, rulesForProvince } from "@/lib/rent-increase/rules";
 import {
@@ -57,6 +59,8 @@ export default async function UnitPage({
 }) {
   const { propertyId, unitId } = await params;
   const { property, unit, today } = await getUnit(propertyId, unitId);
+  const user = await requireUser();
+  const documents = await loadDocumentPanel(user.id, { type: "unit", unitId: unit.id });
   const leases = unit.tenancies.map((tenancy) => ({
     tenancy,
     phase: tenancyPhase(
@@ -204,6 +208,13 @@ export default async function UnitPage({
           </ul>
         )}
       </section>
+
+      <DocumentSection
+        documents={documents.documents}
+        targets={documents.targets}
+        storageMode={documents.storageMode}
+        showIndexLink
+      />
 
       <section className="mt-10 border-t border-line pt-6">
         <h2 className="font-serif text-xl">Delete this unit</h2>

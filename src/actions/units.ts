@@ -5,6 +5,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/dal";
 import { prisma } from "@/lib/db";
+import { purgeOwnedDocuments } from "@/lib/services/documents";
 import { formString, parseUnit, type FormState } from "@/lib/validators";
 
 async function ownedProperty(userId: string, propertyId: string) {
@@ -89,6 +90,24 @@ export async function deleteUnit(
     notFound();
   }
   const tenantIds = unit.tenancies.map((tenancy) => tenancy.tenantId);
+  const outside = tenantIds.length
+    ? await prisma.tenancy.findMany({
+        where: {
+          tenantId: { in: tenantIds },
+          unitId: { not: unit.id },
+        },
+        select: { tenantId: true },
+      })
+    : [];
+  const staying = new Set(outside.map((row) => row.tenantId));
+  const doomed = tenantIds.filter((id) => !staying.has(id));
+  await purgeOwnedDocuments(user.id, {
+    OR: [
+      { unitId: unit.id },
+      { tenancy: { unitId: unit.id } },
+      ...(doomed.length > 0 ? [{ tenantId: { in: doomed }, tenancyId: null }] : []),
+    ],
+  });
   await prisma.unit.delete({ where: { id: unit.id } });
   if (tenantIds.length > 0) {
     await prisma.tenant.deleteMany({

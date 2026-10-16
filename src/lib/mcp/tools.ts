@@ -27,7 +27,9 @@ import {
   saveRentIncreaseDraft,
 } from "@/lib/services/rent-increase";
 import { parsePayment, type PaymentInput } from "@/lib/validators";
+import { SIGNED_URL_SECONDS } from "@/lib/documents/catalog";
 import { recordToolDefinitions, runRecordTool } from "@/lib/mcp/record-tools";
+import { createDocumentLink, listDocuments } from "@/lib/services/documents";
 
 export type AgentContext = {
   ownerId: string;
@@ -68,6 +70,8 @@ const INSTRUCTIONS = [
   "allocate_payment, upsert_charge, record_credit, record_expense, upsert_legal_case, stage_import, review_import_row, and commit_import preview first and return confirmationToken. Call the same tool again with that token to commit. Every one of those calls is audited as via agent.",
   "Quebec properties are record-only. Ontario N1, N2, and N4 notices are refused for them.",
   "A payment can be split across rent periods and non-rent charges. Interac references and cheque numbers are unique for the landlord. Without a reference, the same payer, date, and amount is not posted twice.",
+  "list_documents lists file names and categories. It does not return file contents.",
+  "get_document_link returns a signed download URL that expires in 120 seconds. The file must belong to this landlord.",
 ].join(" ");
 
 export function mcpInstructions(): string {
@@ -347,6 +351,53 @@ const tools: ToolDefinition[] = [
     },
   },
   ...recordToolDefinitions,
+  {
+    name: "list_documents",
+    description:
+      "List this landlord's documents. Filter with propertyId, unitId, tenantId, tenancyId, kind, or expiringOnly. Does not return file contents or a download link.",
+    scope: "READ",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        propertyId: { type: "string" },
+        unitId: { type: "string" },
+        tenantId: { type: "string" },
+        tenancyId: { type: "string" },
+        kind: {
+          type: "string",
+          enum: ["LEASE", "ID", "INSURANCE", "INSPECTION", "NOTICE", "RECEIPT", "INVOICE", "OTHER"],
+        },
+        expiringOnly: {
+          type: "boolean",
+          description: "Only documents that expire within 60 days, including dates that have passed.",
+        },
+      },
+    },
+  },
+  {
+    name: "get_document_link",
+    description: `A signed download URL for one document owned by this landlord. The URL expires in ${SIGNED_URL_SECONDS} seconds.`,
+    scope: "READ",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        documentId: { type: "string" },
+      },
+      required: ["documentId"],
+    },
+  },
 ];
 
 export function toolsFor(scopes: AgentTokenScope[]) {
@@ -369,6 +420,17 @@ function asRecord(value: unknown): Record<string, unknown> {
     throw new ServiceError("invalid", "Tool arguments must be an object.");
   }
   return value as Record<string, unknown>;
+}
+
+function optionalBoolean(args: Record<string, unknown>, key: string): boolean | undefined {
+  const value = args[key];
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "boolean") {
+    throw new ServiceError("invalid", `${key} must be true or false.`);
+  }
+  return value;
 }
 
 function optionalString(args: Record<string, unknown>, key: string): string | undefined {
@@ -1024,6 +1086,32 @@ async function runTool(ctx: AgentContext, name: string, args: Record<string, unk
     }
     case "prepare_rent_increase_notice":
       return prepareRentIncreaseTool(ctx, args);
+    case "list_documents": {
+      const documents = await listDocuments(ctx.ownerId, {
+        propertyId: optionalString(args, "propertyId"),
+        unitId: optionalString(args, "unitId"),
+        tenantId: optionalString(args, "tenantId"),
+        tenancyId: optionalString(args, "tenancyId"),
+        kind: optionalString(args, "kind"),
+        expiringOnly: optionalBoolean(args, "expiringOnly"),
+      });
+      return {
+        result: { documents },
+        summary: via(`Listed ${documents.length} ${documents.length === 1 ? "document" : "documents"}`),
+        auditStatus: "ok",
+      };
+    }
+    case "get_document_link": {
+      const link = await createDocumentLink(
+        ctx.ownerId,
+        requiredString(args, "documentId", "the document id"),
+      );
+      return {
+        result: link,
+        summary: via(`Opened a short download link for ${link.fileName}`),
+        auditStatus: "ok",
+      };
+    }
     default: {
       const recorded = await runRecordTool(ctx, name, args);
       if (recorded) {

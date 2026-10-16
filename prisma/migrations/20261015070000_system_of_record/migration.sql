@@ -1,8 +1,8 @@
 -- System of record: allocations, charges, credits, legal cases,
 -- co-owners, jurisdiction, expenses, corrections, and import staging.
 --
--- Production applies this file by hand:
---   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261015050000_system_of_record/migration.sql
+-- Apply after 20261015060000_document_storage. Production applies this file by hand:
+--   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f prisma/migrations/20261015070000_system_of_record/migration.sql
 --
 -- Money columns are integer cents. Rent periods are YYYY-MM text.
 
@@ -448,31 +448,15 @@ WHERE t."lastIncreaseOn" IS NOT NULL
     SELECT 1 FROM "RentChange" AS r WHERE r."tenancyId" = t.id
   );
 
--- Row level security on the new tables. The table owner (the app role)
--- bypasses these policies. Any other role sees a row only when the session
--- sets app.owner_id to that landlord, matching the ownerId filter the app
--- already uses.
-DO $$
-DECLARE
-  tbl text;
-BEGIN
-  FOREACH tbl IN ARRAY ARRAY[
-    'LedgerCharge',
-    'RentCredit',
-    'RentChange',
-    'LegalCase',
-    'PropertyOwner',
-    'ImportBatch',
-    'ImportRow',
-    'LedgerOverride'
-  ]
-  LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
-    EXECUTE format('DROP POLICY IF EXISTS %I ON %I', tbl || '_owner_isolation', tbl);
-    EXECUTE format(
-      'CREATE POLICY %I ON %I USING ("ownerId" = current_setting(''app.owner_id'', true)) WITH CHECK ("ownerId" = current_setting(''app.owner_id'', true))',
-      tbl || '_owner_isolation',
-      tbl
-    );
-  END LOOP;
-END $$;
+-- Row level security, same as Document and DocumentAuditLog.
+-- Enabled, with no policies and without FORCE. The production app connects
+-- as the table owner (role prisma) and never sets app.owner_id, so it
+-- bypasses row level security. Queries still filter by ownerId in the app.
+ALTER TABLE "LedgerCharge" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "RentCredit" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "RentChange" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "LegalCase" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PropertyOwner" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ImportBatch" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ImportRow" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "LedgerOverride" ENABLE ROW LEVEL SECURITY;

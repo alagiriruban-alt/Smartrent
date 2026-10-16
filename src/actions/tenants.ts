@@ -6,6 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/dal";
 import { dateOnlyToUtc, rangesOverlap, utcToDateOnly } from "@/lib/dates";
 import { prisma } from "@/lib/db";
+import { purgeOwnedDocuments } from "@/lib/services/documents";
 import { formString, parseTenant, type FormState } from "@/lib/validators";
 
 function tenantFields(formData: FormData) {
@@ -203,6 +204,13 @@ export async function deleteTenant(
   });
   if (!tenancy) {
     notFound();
+  }
+  await purgeOwnedDocuments(user.id, { tenancyId: tenancy.id });
+  const otherLeases = await prisma.tenancy.count({
+    where: { tenantId: tenancy.tenantId, NOT: { id: tenancy.id } },
+  });
+  if (otherLeases === 0) {
+    await purgeOwnedDocuments(user.id, { tenantId: tenancy.tenantId, tenancyId: null });
   }
   await prisma.tenancy.delete({ where: { id: tenancy.id } });
   await prisma.tenant.deleteMany({

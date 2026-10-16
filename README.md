@@ -127,11 +127,57 @@ That sample is dated from the day you run the seed, so Sam is late whenever toda
 - Draft a rent increase notice. A unit covered by the guideline gets N1 data, filled to the verified guideline percent. An exempt unit gets N2 data, and you choose the amount. Print it or download a PDF. The page is marked DRAFT and says it is not legal advice. It is not the official Landlord and Tenant Board form. Use the link on the draft to open the current form.
 - The draft warns you if the increase is above the guideline, if the effective date is less than 12 months after move-in or the last increase, or if fewer than 90 days remain before that date. You can still save the draft after you read the warning.
 - Keep the yearly Ontario guideline percents under Settings. Each year has a source link and a verified flag. An N1 draft is blocked until that year's guideline is verified. N2 drafts are not blocked by the guideline, because the guideline does not apply.
+- Open **Documents** to upload a PDF, JPG, PNG, HEIC, or DOCX (10 MB maximum) and attach it to a property, unit, tenant, or lease. Categories are lease, ID, insurance, inspection, notice (N1, N2, or N4), receipt, and other. An optional expiry date, such as an insurance renewal, shows on the upcoming-expiry list for the next 60 days, along with dates that have already passed. The same list appears on the property, unit, and tenant pages.
+- On a rent-increase draft, choose **Save N1 PDF in Documents** or **Save N2 PDF in Documents**. On an N4 notice, choose **Save N4 PDF in Documents**. Those copies are the same PDFs as Download PDF. They are not official forms and they are not served.
 
 The sample landlord has Jordan Patel eligible for an increase inside the 120-day window, and the lower unit marked guideline-exempt. Running the seed again refreshes Jordan's last-increase date so that window stays current, and it puts the guideline years back to the checked percents. The guideline years 2018 through 2027 are copied from [Ontario's rent increase guideline page](https://www.ontario.ca/page/residential-rent-increases) and stored as verified. That page, updated June 23, 2026, lists 2026 as 2.1% and 2027 as 1.9%.
 - Create a personal token under **Settings** so an assistant can use the same records. You can revoke the token on that page. What the assistant did is listed in the audit log, tagged **via agent**.
 
 Passwords are stored as a hash. The app never keeps the original password. Agent tokens are stored as a hash too. The secret is shown once, when you create it.
+
+## Document storage
+
+Uploads go to a private Supabase Storage bucket. The browser never receives the service role key. A download is a signed URL that lasts 120 seconds, and the app checks that the file belongs to the signed-in landlord before it creates that URL.
+
+Set these on the server (Vercel project settings, or `.env` on your computer). Do not prefix them with `NEXT_PUBLIC_`.
+
+- `SUPABASE_URL` — `https://dflvfdsvvdiqcfzxliev.supabase.co` for this project (region `ca-central-1`)
+- `SUPABASE_SERVICE_ROLE_KEY` — the service role secret from the Supabase dashboard (Project Settings → API)
+
+If either value is missing, the app still builds and runs. The Documents page says storage is **not configured** and uploads are refused.
+
+Optional:
+
+- `SUPABASE_DOCUMENT_BUCKET` — defaults to `landlord-documents`
+- `DOCUMENT_STORAGE=local` — stores files under `.data/documents` on this computer when the Supabase variables are not set. Use this to try uploads locally. It is ignored when both Supabase variables are set.
+
+Create the private bucket once, in the Supabase SQL editor. This project is `dflvfdsvvdiqcfzxliev` in `ca-central-1`, so the files stay in Canada. Do not run this against the Postgres database on your computer; that database has no `storage` schema.
+
+```sql
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'landlord-documents',
+  'landlord-documents',
+  false,
+  10485760,
+  array[
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/heic',
+    'image/heif',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ]
+)
+on conflict (id) do update
+set public = false,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+```
+
+The bucket stays private. The app uploads and signs URLs with the service role, so you do not add a public read policy.
+
+Production database changes are applied by hand. After you deploy, paste `prisma/migrations/20261015060000_document_storage/migration.sql` into the Supabase SQL editor. It adds the document columns, the audit log, and row level security with no policies, matching the other tables. The Data API cannot read those rows. The app connects through `DATABASE_URL` as the table owner, which bypasses row level security.
 
 ## Connect an assistant (MCP)
 
@@ -142,7 +188,7 @@ An assistant such as Grok Bot can work on this account through the MCP endpoint 
 3. Copy the token. It starts with `srb_`. You will not see it again.
 4. Point the MCP client at `http://localhost:3000/api/mcp` and send the token as `Authorization: Bearer srb_...`.
 
-A read token can list properties, tenants, rent status, late tenants, reminders, and receipts. It can also parse an e-Transfer email. A write token can record a payment, ingest an e-Transfer, and save an N4 draft.
+A read token can list properties, tenants, rent status, late tenants, reminders, receipts, and documents. `get_document_link` returns a signed download URL that expires in 120 seconds, and only for a file that belongs to that landlord. It can also parse an e-Transfer email. A write token can record a payment, ingest an e-Transfer, and save an N4 draft.
 
 Writes that move money, and the N4 draft, do not save on the first call. The tool returns `confirmationToken`. Call the same tool again with that token and the same arguments. The token lasts 15 minutes and works once. `ingest_etransfer_email` is the exception: when the sender, amount, date, and reference match one tenant, it records immediately. A weaker match returns `pending_confirmation` and waits for the token. The same e-Transfer reference is never posted twice.
 
@@ -235,5 +281,3 @@ The ledger keeps one charge per lease month. Payments are split across those mon
 The database also has tables for later work that is not on screen yet:
 
 - expenses, using the categories on CRA form T776
-- documents such as leases and stored files
-- N4 notices for unpaid rent

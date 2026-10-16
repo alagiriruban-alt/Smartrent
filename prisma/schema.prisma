@@ -1,8 +1,7 @@
 // SmartRentBoss data model.
-// Landlords, properties, units, tenants, the rent ledger, and Ontario
-// notices are in use. Money is integer cents. A rent period is an
-// explicit YYYY-MM value, never a phrase parsed at read time.
-// Document file storage is reserved for a later module.
+// Landlords, properties, units, tenants, the rent ledger, Ontario
+// notices, documents, and expenses are in use. Money is integer cents.
+// A rent period is an explicit YYYY-MM value, never a phrase parsed at read time.
 
 generator client {
   provider = "prisma-client-js"
@@ -32,6 +31,7 @@ model User {
   agentTokens          AgentAccessToken[]
   agentConfirmations   AgentConfirmation[]
   agentAuditLogs       AgentAuditLog[]
+  documentAudits       DocumentAuditLog[]
   ledgerCharges        LedgerCharge[]
   rentCredits          RentCredit[]
   legalCases           LegalCase[]
@@ -97,6 +97,7 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   tenancies  Tenancy[]
+  documents  Document[]
   legalCases LegalCase[]
 
   @@index([ownerId])
@@ -339,30 +340,47 @@ enum T776Category {
   OTHER
 }
 
-// Files such as leases, notices, and receipts. Storage itself is not
-// built yet; storageKey is the future location of the file.
+// A file the landlord uploaded, or a generated notice PDF they chose to keep.
+// storageKey is the private object name. It is never a public URL.
 model Document {
-  id         String       @id @default(cuid())
+  id         String          @id @default(cuid())
   ownerId    String
-  owner      User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  owner      User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  subject    DocumentSubject @default(PROPERTY)
   propertyId String?
-  property   Property?    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  property   Property?       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   unitId     String?
-  unit       Unit?        @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  unit       Unit?           @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tenantId   String?
+  tenant     Tenant?         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenancyId  String?
-  tenancy    Tenancy?     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancy    Tenancy?        @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   expenseId  String?
-  expense    Expense?     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  expense    Expense?        @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   noticeId   String?
-  notice     Notice?      @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  notice     Notice?         @relation(fields: [noticeId], references: [id], onDelete: Cascade)
   kind       DocumentKind
   fileName   String
   storageKey String
   mimeType   String?
   byteSize   Int?
-  createdAt  DateTime     @default(now())
+  expiresOn  DateTime?       @db.Date
+  createdAt  DateTime        @default(now())
 
   @@index([ownerId])
+  @@index([ownerId, expiresOn])
+  @@index([propertyId])
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([tenancyId])
+  @@index([noticeId])
+}
+
+enum DocumentSubject {
+  PROPERTY
+  UNIT
+  TENANT
+  LEASE
 }
 
 enum DocumentKind {
@@ -371,6 +389,29 @@ enum DocumentKind {
   RECEIPT
   INVOICE
   OTHER
+  ID
+  INSURANCE
+  INSPECTION
+}
+
+enum DocumentAuditAction {
+  UPLOAD
+  DELETE
+}
+
+// Written when a file is uploaded or deleted. The row stays after the
+// file is gone, so documentId is not a foreign key.
+model DocumentAuditLog {
+  id         String              @id @default(cuid())
+  ownerId    String
+  owner      User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  documentId String?
+  action     DocumentAuditAction
+  fileName   String
+  summary    String
+  createdAt  DateTime            @default(now())
+
+  @@index([ownerId, createdAt])
 }
 
 // Yearly rent increase guideline for a province. Ontario rows are

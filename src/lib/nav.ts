@@ -1,6 +1,7 @@
 export const dashboardNav = [
   { href: "/dashboard", label: "Rent roll" },
   { href: "/dashboard/properties", label: "Properties" },
+  { href: "/dashboard/documents", label: "Documents" },
   { href: "/dashboard/rent", label: "Rent" },
   { href: "/dashboard/rent-increases", label: "Increases" },
   { href: "/dashboard/reminders", label: "Reminders" },
@@ -13,6 +14,9 @@ const tenancyRentPath = /\/tenancies\/[^/]+\/rent$/;
 export function isDashboardNavActive(pathname: string, href: string) {
   if (href === "/dashboard") {
     return pathname === "/dashboard";
+  }
+  if (href === "/dashboard/documents") {
+    return pathname === "/dashboard/documents" || pathname.startsWith("/dashboard/documents/");
   }
   if (href === "/dashboard/properties") {
     return (

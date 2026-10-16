@@ -167,6 +167,8 @@ async function main() {
       "list_reminders",
       "preview_reminder_message",
       "prepare_n4_draft",
+      "list_documents",
+      "get_document_link",
     ]) {
       if (!names.includes(name)) {
         throw new Error(`Missing tool ${name}.`);
@@ -180,6 +182,14 @@ async function main() {
     const propertyRows = properties.properties as { name: string | null }[];
     if (!propertyRows.some((property) => property.name === "King Street duplex")) {
       throw new Error("Seed property was not listed.");
+    }
+
+    const documents = readTool(await rpc(server.url, token, "tools/call", {
+      name: "list_documents",
+      arguments: {},
+    }));
+    if (!Array.isArray(documents.documents)) {
+      throw new Error("list_documents did not return a list.");
     }
 
     const tenants = readTool(await rpc(server.url, token, "tools/call", {
